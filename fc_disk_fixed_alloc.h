@@ -11,12 +11,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-
 namespace frozenca {
-
-template <typename T>
-concept DiskAllocable = std::is_same_v<std::remove_cvref_t<T>, T> &&
-    std::is_trivially_copyable_v<T> &&(sizeof(T) % alignof(T) == 0);
 
 template <DiskAllocable T, std::size_t Count>
 class MemoryResourceFixed : public std::pmr::memory_resource {

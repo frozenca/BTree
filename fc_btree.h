@@ -21,13 +21,31 @@ namespace frozenca {
 template <typename T>
 concept Containable = std::is_same_v<std::remove_cvref_t<T>, T>;
 
+template <typename T>
+concept DiskAllocable = std::is_same_v<std::remove_cvref_t<T>, T> &&
+    std::is_trivially_copyable_v<T> &&(sizeof(T) % alignof(T) == 0);
+
 using index_t = std::ptrdiff_t;
 using attr_t = std::int32_t;
+
+template <DiskAllocable K, DiskAllocable V> struct DiskPair {
+  K first;
+  V second;
+};
+
+template <DiskAllocable K, DiskAllocable V> struct DiskPairRef {
+  std::reference_wrapper<const K> first;
+  std::reference_wrapper<V> second;
+};
 
 template <typename T> struct TreePairRef { using type = T; };
 
 template <typename T, typename U> struct TreePairRef<std::pair<T, U>> {
   using type = std::pair<const T &, U &>;
+};
+
+template <DiskAllocable T, DiskAllocable U> struct TreePairRef<DiskPair<T, U>> {
+  using type = DiskPairRef<T, U>;
 };
 
 template <typename TreePair> using PairRefType = TreePairRef<TreePair>::type;
@@ -321,7 +339,7 @@ public:
 private:
   Alloc alloc_;
   std::unique_ptr<Node> root_;
-  iterator_type begin_;
+  const_iterator_type begin_;
 
 public:
   BTreeBase(const Alloc &alloc = Alloc{})
