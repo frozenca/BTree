@@ -1,25 +1,30 @@
 # B-Tree
+
 This library implements a general-purpose header-only STL-like B-Tree in C++, including supports for using it for memory-mapped disk files and fixed-size allocators.
 
-A B-Tree is a self-balancing tree data structure that maintains sorted data and allows searches, sequential access, insertions, and deletions in logarithmic time. Unlike other self-balancing binary search trees, the B-tree is well suited for storage systems that read and write relatively large blocks of data, such as databases and file systems. (Wikipedia: https://en.wikipedia.org/wiki/B-tree)
+A B-Tree is a self-balancing tree data structure that maintains sorted data and allows searches, sequential access, insertions, and deletions in logarithmic time. Unlike other self-balancing binary search trees, the [B-tree](https://en.wikipedia.org/wiki/B-tree) is well suited for storage systems that read and write relatively large blocks of data, such as databases and file systems
 
 Just like ordered associative containers in the C++ standard library, key-value pairs can be supported and duplicates can be allowed.
 
 There are four specialized B-Tree classes: ```frozenca::BTreeSet```, ```frozenca::BTreeMultiSet```, ```frozenca::BTreeMap``` and ```frozenca::BTreeMultiMap```, which corresponds to ```std::set```, ```std::multiset```, ```std::map``` and ```std::multimap``` respectively.
 
-# How to use
+## How to use
+
 This library is header-only, so no additional setup process is required beyond including the headers.
 
-# Target OS/Compiler version
+## Target OS/Compiler version
+
 This library aggressively uses C++20 features, and verified to work in gcc 11.2 and MSVC 19.32.
 
 POSIX and Windows operating systems are supported in order to use the memory-mapped disk file interface.
 
 There are currently no plans to support C++17 and earlier.
 
-# Example usages
+## Example usages
+
 Usage is very similar to the C++ standard library ordered associative containers (i.e. ```std::set``` and its friends)
-```
+
+```cpp
 #include "fc_btree.h"
 #include <iostream>
 #include <string>
@@ -60,16 +65,17 @@ You can refer more example usages in ```test/unittest.cpp```.
 
 Users can specify a fanout parameter for B-tree.
 
-The default value is 2, where a B-Tree boils down to an 2-3-4 tree: (https://en.wikipedia.org/wiki/2%E2%80%933%E2%80%934_tree)
+The default value is 2, where a B-Tree boils down to an [2-3-4 tree](https://en.wikipedia.org/wiki/2%E2%80%933%E2%80%934_tree) 
 
 It is recommended to users to choose a fanout parameter suitable to their usages, instead of using the default value.
 
-```
+```cpp
   // btree with fanout 4
   fc::BTreeSet<int, 4> btree;
 ```
 
-# Supported operations
+## Supported operations
+
 Other than regular operations supported by ```std::set``` and its friends (```lower_bound()```, ```upper_bound()```, ```equal_range()``` and etc), the following operations are supported:
 
 ```tree.kth(std::ptrdiff_t k)``` : Returns the k-th element in the tree as 0-based index. Time complexity: ```O(log n)```
@@ -82,10 +88,12 @@ Other than regular operations supported by ```std::set``` and its friends (```lo
 
 ```frozenca::split(Tree&& tree, value_type val)``` : Splits a tree to two trees, so that the first tree contains keys less than the key of ```val```, and the second tree contains keys greater than the key of ```val```. Time complexity: ```O(log n)```
 
-# Concurrency
+## Concurrency
+
 Currently, thread safety is not guaranteed. Lock-free support is the first TODO, but contributions are welcome if you're interested.
 
-# Disk B-Tree
+## Disk B-Tree
+
 You can use a specialized variant that utilizes memory-mapped disk files and an associated fixed-size allocator. You have to include ```fc_disk_btree.h```, ```fc_disk_fixed_alloc.h``` and ```fc_mmfile.h``` to use it.
 
 For this variant, key-value pairs are supported, but duplicates are not supported (but you can easily adjust it to support it manually).
@@ -94,11 +102,12 @@ For this variant, supported types have stricter type constraints: it should sati
 
 The following code initializes a ```frozenca::DiskBTree```, which generates a memory-mapped disk file ```database.bin``` and uses it, with an initial byte size of 32 megabytes. If the third argument is ```true```, it will destroy the existing file and create a new one (default is ```false```). You can't extend the pool size of the memory-mapped disk file once you initialized (doing so invalidates all pointers in the associated allocator).
 
-```
+```cpp
 fc::DiskBTree<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
 ```
 
-# Performance
+## Performance
+
 Using a performance test code (```test/perftest.cpp```) that insert/retrieve/erase 10 million ``std::int64_t`` in random order, I see the following results in my machine (gcc 11.2-O3):
 
 ```
@@ -114,10 +123,6 @@ Time to lookup 10000000 elements: 15527.5 ms
 Time to erase 10000000 elements: 18128.5 ms
 ```
 
-# License
+## License
+
 This library is licensed under Apache License Version 2.0 with LLVM Exceptions (LICENSE-Apache2-LLVM or https://llvm.org/foundation/relicensing/LICENSE.txt)
-
-
-
-
-
