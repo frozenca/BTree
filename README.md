@@ -90,9 +90,9 @@ You can use a specialized variant that utilizes memory-mapped disk files and an 
 
 For this variant, key-value pairs and duplicates are not supported (but you can easily adjust it to support them manually).
 
-For this variant, Supported types have stricter type constraints: it should satisfy ```std::trivially_copyable_v```, and its alignment should at least be the alignment of the pointer type in the machine. This variant has a larger default fanout, 64.
+For this variant, supported types have stricter type constraints: it should satisfy ```std::trivially_copyable_v```, and its alignment should at least be the alignment of the pointer type in the machine. This variant has a larger default fanout, 64.
 
-The following code initializes a ```frozenca::DiskBTree```, which generates a memory-mapped disk file ``database.bin``` and uses it, with an initial byte size of ```1UL << 25UL```. You can't extend the pool size of the memory-mapped disk file (doing so invalidates all pointers in the associated allocator).
+The following code initializes a ```frozenca::DiskBTree```, which generates a memory-mapped disk file ``database.bin``` and uses it, with an initial byte size of 32 megabytes. If the third argument is ```true```, it will destroy the existing file and create a new one (default is ```false```). You can't extend the pool size of the memory-mapped disk file (doing so invalidates all pointers in the associated allocator).
 
 ```
 fc::DiskBTree<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
