@@ -83,7 +83,7 @@ Other than regular operations supported by ```std::set``` and its friends (```lo
 ```frozenca::split(Tree&& tree, value_type val)``` : Splits a tree to two trees, so that the first tree contains keys less than the key of ```val```, and the second tree contains keys greater than the key of ```val```. Time complexity: ```O(log n)```
 
 # Concurrency
-Currently, thread safety is not guaranteed. Contributions are welcome.
+Currently, thread safety is not guaranteed. Lock-free support is the first TODO, but contributions are welcome if you're interested.
 
 # Disk B-Tree
 You can use a specialized variant that utilizes memory-mapped disk files and an associated fixed-size allocator. You have to include ```fc_disk_btree.h```, ```fc_disk_fixed_alloc.h``` and ```fc_mmfile.h``` to use it.
