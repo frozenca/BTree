@@ -72,9 +72,9 @@ It is recommended to users to choose a fanout parameter suitable to their usages
 # Supported operations
 Other than ```std::set``` and its friends, the following operations are supported:
 
-```tree.kth(std::ptrdiff_t k)``` : Returns the k-th element in the tree as 0-based index.
+```tree.kth(std::ptrdiff_t k)``` : Returns the k-th element in the tree as 0-based index. Time complexity: ```O(log n)```
 
-```tree.order(const_iterator_type iter)``` : Returns the rank of the element in the iterator in the tree as 0-based index.
+```tree.order(const_iterator_type iter)``` : Returns the rank of the element in the iterator in the tree as 0-based index. Time complexity: ```O(log n)```
 
 ```tree.enumerate(const key_type& a, const key_type& b)``` : Range query. Returns the range of values for their key in ```[a, b)```. Time complexity: ```O(log n + k)``` where ```k``` is the number of keys in the range
 
