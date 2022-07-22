@@ -115,9 +115,7 @@ Time to erase 10000000 elements: 18128.5 ms
 ```
 
 # License
-This library is licensed under CC-BY-SA (https://en.wikipedia.org/wiki/Creative_Commons_license#Six_regularly_used_licenses).
-
-The author (Jooseong Lee) grants permission to copy, use, modify and create derivative works from this library for your personal or internal business use only.
+This library is licensed under Apache License Version 2.0 with LLVM Exceptions (LICENSE-Apache2-LLVM or https://llvm.org/foundation/relicensing/LICENSE.txt)
 
 
 
