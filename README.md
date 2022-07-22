@@ -70,7 +70,7 @@ It is recommended to users to choose a fanout parameter suitable to their usages
 ```
 
 # Supported operations
-Other than ```std::set``` and its friends, the following operations are supported:
+Other than regular operations supported by ```std::set``` and its friends (```lower_bound()```, ```upper_bound()```, ```equal_range()``` and etc), the following operations are supported:
 
 ```tree.kth(std::ptrdiff_t k)``` : Returns the k-th element in the tree as 0-based index. Time complexity: ```O(log n)```
 
