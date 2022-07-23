@@ -40,7 +40,10 @@ int main() {
   btree.insert(5);
   
   // 1 2 3 4 5
-  std::cout << btree << '\n';
+  for (auto num : btree) {
+    std::cout << num << ' ';
+  }
+  std::cout << '\n';
   
   fc::BTreeMap<std::string, int> strtree;
 
@@ -49,7 +52,9 @@ int main() {
   strtree["bbb"] = 9;
   strtree["asdf"] = 8;
   
-  std::cout << strtree << '\n';
+  for (const auto &[k, v] : strtree) {
+    std::cout << k << ' ' << v << '\n';
+  }
 
   strtree["asdf"] = 333;
   
@@ -57,7 +62,9 @@ int main() {
   std::cout << strtree["asdf"] << '\n';
 
   strtree.emplace("asdfgh", 200);
-  std::cout << btree << '\n';
+  for (const auto &[k, v] : strtree) {
+    std::cout << k << ' ' << v << '\n';
+  }
 }
 ```
 
