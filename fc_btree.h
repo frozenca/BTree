@@ -346,7 +346,9 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
     }
 
     bool verify() noexcept {
-      return !node_->parent_ || (index_ < node_->nkeys());
+      // Uncomment this line for testing
+      // assert(!node_->parent_ || (index_ < node_->nkeys()));
+      return true;
     }
 
     BTreeIterator &operator++() noexcept {
@@ -525,7 +527,7 @@ public:
 
   [[nodiscard]] bool verify() const {
     // Uncomment these lines for testing
-    
+
     // assert(begin_ == const_iterator_type(leftmost_leaf(root_.get()), 0));
     // assert(verify(root_.get()));
     return true;
