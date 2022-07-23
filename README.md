@@ -136,8 +136,8 @@ Time to erase 10000000 elements: 18128.5 ms
 
 If you want to contribute and test the code, please uncomment these lines:
 
-https://github.com/frozenca/BTree/blob/a6a514c4cc23b39636b17089e807701a40619f82/fc_btree.h#L349
-https://github.com/frozenca/BTree/blob/a6a514c4cc23b39636b17089e807701a40619f82/fc_btree.h#L527-#L528
+https://github.com/frozenca/BTree/blob/adf3c3309f45a65010d767df674c232c12f5c00a/fc_btree.h#L350
+https://github.com/frozenca/BTree/blob/adf3c3309f45a65010d767df674c232c12f5c00a/fc_btree.h#L531-#L532
 
 and by running ```test/unittest.cpp``` you can verify basic operations.
 
