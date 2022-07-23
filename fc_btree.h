@@ -452,7 +452,7 @@ public:
   }
 
   [[nodiscard]] bool verify() const {
-    assert(begin_ == iterator_type(leftmost_leaf(root_.get()), 0));
+    assert(begin_ == const_iterator_type(leftmost_leaf(root_.get()), 0));
     assert(verify(root_.get()));
     return true;
   }
