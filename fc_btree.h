@@ -100,7 +100,7 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
     // invariant: for root, 0 <= #(child) == (#(key) + 1)) <= 2 * t
     // invariant: for leaves, 0 == #(child)
     // invariant: child_0 <= key_0 <= child_1 <= ... <=  key_(N - 1) <= child_N
-    std::vector<V, Alloc> keys_ = nullptr;
+    std::vector<V, Alloc> keys_;
     std::vector<std::unique_ptr<Node>> children_;
     Node *parent_ = nullptr;
     index_t size_ = 0;
@@ -1440,7 +1440,7 @@ public:
       T &&raw_value) requires
       std::is_constructible_v<V_, std::remove_cvref_t<T>>;
 
-  friend std::ostream &operator<<(std::ostream &os, const BTreeBase &tree) {
+  friend std::ostream &print(std::ostream &os, const BTreeBase &tree) {
     auto print = [&]() {
       if constexpr (is_set_) {
         for (const auto &v : tree) {

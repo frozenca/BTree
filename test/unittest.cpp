@@ -53,15 +53,24 @@ int main() {
     std::cout << "std:initializer_list test\n";
 
     fc::BTreeSet<int> btree{1, 4, 3, 2, 3, 3, 6, 5, 8};
-    std::cout << btree << '\n';
+    for (auto num : btree) {
+      std::cout << num << ' ';
+    }
+    std::cout << '\n';
   }
   {
     std::cout << "Multiset test\n";
 
     fc::BTreeMultiSet<int> btree{1, 4, 3, 2, 3, 3, 6, 5, 8};
-    std::cout << btree << '\n';
+    for (auto num : btree) {
+      std::cout << num << ' ';
+    }
+    std::cout << '\n';
     btree.erase(3);
-    std::cout << btree << '\n';
+    for (auto num : btree) {
+      std::cout << num << ' ';
+    }
+    std::cout << '\n';
   }
   {
     std::cout << "Order statistic test\n";
@@ -102,7 +111,10 @@ int main() {
 
     std::cout << "erase_if test\n";
     btree.erase_if([](auto n) { return n >= 20 && n <= 90; });
-    std::cout << btree << '\n';
+    for (auto num : btree) {
+      std::cout << num << ' ';
+    }
+    std::cout << '\n';
   }
   {
     std::cout << "BTreeMap test\n";
@@ -112,13 +124,22 @@ int main() {
     btree["a"] = 6;
     btree["bbb"] = 9;
     btree["asdf"] = 8;
-    std::cout << btree << '\n';
+    for (const auto &[k, v] : btree) {
+      std::cout << k << ' ' << v << '\n';
+    }
+    std::cout << '\n';
 
     btree["asdf"] = 333;
-    std::cout << btree << '\n';
+    for (const auto &[k, v] : btree) {
+      std::cout << k << ' ' << v << '\n';
+    }
+    std::cout << '\n';
 
     btree.emplace("asdfgh", 200);
-    std::cout << btree << '\n';
+    for (const auto &[k, v] : btree) {
+      std::cout << k << ' ' << v << '\n';
+    }
+    std::cout << '\n';
   }
   {
     std::cout << "join/split test\n";
