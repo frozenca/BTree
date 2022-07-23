@@ -135,7 +135,7 @@ int main() {
   std::cout << "Warming up complete...\n";
   {
     std::cout << "frozenca::DiskBTreeSet test\n";
-    fc::DiskBTree<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
+    fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
     tree_perf_test(btree);
   }
   {

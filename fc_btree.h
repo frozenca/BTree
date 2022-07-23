@@ -28,35 +28,38 @@ concept DiskAllocable = std::is_same_v<std::remove_cvref_t<T>, T> &&
 using index_t = std::ptrdiff_t;
 using attr_t = std::int32_t;
 
-template <DiskAllocable K, DiskAllocable V> struct DiskPair {
+template <Containable K, Containable V> struct BTreePair {
   K first;
   V second;
+
+  operator std::pair<const K &, V &>() noexcept { return {first, second}; }
+
+  friend bool operator==(const BTreePair &lhs, const BTreePair &rhs) {
+    return lhs.first == rhs.first && lhs.second == rhs.second;
+  }
+
+  friend bool operator!=(const BTreePair &lhs, const BTreePair &rhs) {
+    return !(lhs == rhs);
+  }
 };
 
-template <DiskAllocable K, DiskAllocable V> struct DiskPairRef {
-  std::reference_wrapper<const K> first;
-  std::reference_wrapper<V> second;
-};
+template <typename T> struct TreePairRef { using type = T &; };
 
-template <typename T> struct TreePairRef { using type = T; };
-
-template <typename T, typename U> struct TreePairRef<std::pair<T, U>> {
+template <typename T, typename U> struct TreePairRef<BTreePair<T, U>> {
   using type = std::pair<const T &, U &>;
-};
-
-template <DiskAllocable T, DiskAllocable U> struct TreePairRef<DiskPair<T, U>> {
-  using type = DiskPairRef<T, U>;
 };
 
 template <typename TreePair> using PairRefType = TreePairRef<TreePair>::type;
 
-template <Containable K, typename V> struct Projection {
-  const K &operator()(const V &value) const noexcept {
-    if constexpr (std::is_same_v<K, V>) {
-      return value;
-    } else {
-      return value.first;
-    }
+template <typename V> struct Projection {
+  const auto &operator()(const V &value) const noexcept { return value.first; }
+};
+
+template <typename V> struct ProjectionIter {
+  auto &operator()(V &iter_ref) noexcept { return iter_ref.first; }
+
+  const auto &operator()(const V &iter_ref) const noexcept {
+    return iter_ref.first;
   }
 };
 
@@ -88,11 +91,6 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
 
   // invariant: V is either K or pair<const K, Value> for some Value type.
   static constexpr bool is_set_ = std::is_same_v<K, V>;
-
-  static_assert(
-      std::indirect_strict_weak_order<
-          Comp, std::projected<std::ranges::iterator_t<std::vector<V, Alloc>>,
-                               Projection<K, V>>>);
 
   struct Node {
     // invariant: except root, t - 1 <= #(key) <= 2 * t - 1
@@ -187,6 +185,19 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
     using value_type = V;
     using pointer = V *;
     using reference = PairRefType<V>;
+    using iterator_category = std::bidirectional_iterator_tag;
+    using iterator_concept = iterator_category;
+
+    static reference make_ref(value_type &val) noexcept {
+      return {std::cref(val.first), std::ref(val.second)};
+    }
+  };
+
+  struct BTreeConstRefIterTraits {
+    using difference_type = index_t;
+    using value_type = V;
+    using pointer = V *;
+    using reference = const PairRefType<V>;
     using iterator_category = std::bidirectional_iterator_tag;
     using iterator_concept = iterator_category;
 
@@ -317,7 +328,15 @@ public:
   using size_type = std::size_t;
   using difference_type = index_t;
   using allocator_type = Alloc;
-  using Proj = Projection<K, V>;
+  using Proj =
+      std::conditional_t<is_set_, std::identity, Projection<const V &>>;
+  using ProjIter = std::conditional_t<is_set_, std::identity,
+                                      ProjectionIter<PairRefType<V>>>;
+
+  static_assert(
+      std::indirect_strict_weak_order<
+          Comp, std::projected<std::ranges::iterator_t<std::vector<V, Alloc>>,
+                               Proj>>);
 
   // invariant: K cannot be mutated
   // so if V is K, uses a const iterator.
@@ -331,7 +350,9 @@ public:
   using nonconst_iterator_type = BTreeIterator<BTreeNonConstIterTraits>;
   using iterator_type = BTreeIterator<
       std::conditional_t<is_set_, BTreeConstIterTraits, BTreeRefIterTraits>>;
-  using const_iterator_type = BTreeIterator<BTreeConstIterTraits>;
+  using const_iterator_type =
+      BTreeIterator<std::conditional_t<is_set_, BTreeConstIterTraits,
+                                       BTreeConstRefIterTraits>>;
   using reverse_iterator_type = std::reverse_iterator<iterator_type>;
   using const_reverse_iterator_type =
       std::reverse_iterator<const_iterator_type>;
@@ -941,7 +962,7 @@ protected:
   insert_leaf(Node *node, index_t i,
               T &&value) requires std::is_same_v<std::remove_cvref_t<T>, V> {
     assert(node && node->is_leaf() && !node->is_full());
-    bool update_begin = (empty() || Comp{}(Proj{}(value), Proj{}(*begin_)));
+    bool update_begin = (empty() || Comp{}(Proj{}(value), ProjIter{}(*begin_)));
 
     node->keys_.insert(node->keys_.begin() + i, std::forward<T>(value));
     iterator_type iter(node, i);
@@ -1739,14 +1760,14 @@ using BTreeMultiSet = BTreeBase<K, K, t, t_leaf, Comp, true, Alloc>;
 
 template <Containable K, Containable V, index_t t = 2, index_t t_leaf = 2,
           typename Comp = std::ranges::less,
-          typename Alloc = std::allocator<std::pair<K, V>>>
-using BTreeMap = BTreeBase<K, std::pair<K, V>, t, t_leaf, Comp, false, Alloc>;
+          typename Alloc = std::allocator<BTreePair<K, V>>>
+using BTreeMap = BTreeBase<K, BTreePair<K, V>, t, t_leaf, Comp, false, Alloc>;
 
 template <Containable K, Containable V, index_t t = 2, index_t t_leaf = 2,
           typename Comp = std::ranges::less,
-          typename Alloc = std::allocator<std::pair<K, V>>>
+          typename Alloc = std::allocator<BTreePair<K, V>>>
 using BTreeMultiMap =
-    BTreeBase<K, std::pair<K, V>, t, t_leaf, Comp, true, Alloc>;
+    BTreeBase<K, BTreePair<K, V>, t, t_leaf, Comp, true, Alloc>;
 
 } // namespace frozenca
 

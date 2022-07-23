@@ -96,14 +96,12 @@ Currently, thread safety is not guaranteed. Lock-free support is the first TODO,
 
 You can use a specialized variant that utilizes memory-mapped disk files and an associated fixed-size allocator. You have to include ```fc_disk_btree.h```, ```fc_disk_fixed_alloc.h``` and ```fc_mmfile.h``` to use it.
 
-For this variant, key-value pairs are supported, but duplicates are not supported (but you can easily adjust it to support it manually).
-
 For this variant, supported types have stricter type constraints: it should satisfy ```std::trivially_copyable_v```, and its alignment should at least be the alignment of the pointer type in the machine (for both key type and value type for key-value pairs). This variant has a larger default fanout, 64.
 
-The following code initializes a ```frozenca::DiskBTree```, which generates a memory-mapped disk file ```database.bin``` and uses it, with an initial byte size of 32 megabytes. If the third argument is ```true```, it will destroy the existing file and create a new one (default is ```false```). You can't extend the pool size of the memory-mapped disk file once you initialized (doing so invalidates all pointers in the associated allocator).
+The following code initializes a ```frozenca::DiskBTreeSet```, which generates a memory-mapped disk file ```database.bin``` and uses it, with an initial byte size of 32 megabytes. If the third argument is ```true```, it will destroy the existing file and create a new one (default is ```false```). You can't extend the pool size of the memory-mapped disk file once you initialized (doing so invalidates all pointers in the associated allocator).
 
 ```cpp
-fc::DiskBTree<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
+fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
 ```
 
 ## Performance
