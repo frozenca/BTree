@@ -94,12 +94,14 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
   static constexpr bool is_set_ = std::is_same_v<K, V>;
 
   static constexpr bool is_disk_ = DiskAllocable<V>;
+  static_assert(
+      !is_disk_ || (Fanout == FanoutLeaf),
+      "Fanout customization for leaves is not allowed for disk B-trees");
 
-  static_assert(!is_disk_ || (Fanout == FanoutLeaf));
+  static constexpr auto disk_max_nkeys =
+      static_cast<std::size_t>(2 * Fanout - 1);
 
   struct Node {
-    static constexpr auto disk_max_nkeys =
-        static_cast<std::size_t>(2 * Fanout - 1);
     using keys_type = std::conditional_t<is_disk_, std::span<V, disk_max_nkeys>,
                                          std::vector<V, Alloc>>;
 
@@ -507,6 +509,8 @@ public:
         assert(node->height_ == node->children_[i]->height_ + 1);
         num_keys += node->children_[i]->size_;
       }
+      // parent check
+      assert(node->children_.back()->parent_ == node);
       assert(verify(node->children_.back().get()));
       assert(node->height_ == node->children_.back()->height_ + 1);
       num_keys += node->children_.back()->size_;
@@ -1597,6 +1601,167 @@ public:
       }
     }
     return old_size - size();
+  }
+
+  // serialization and deserialization
+
+  static constexpr std::uint64_t begin_code = 0x6567696e; // 'begin'
+  static constexpr std::uint64_t end_code = 0x656e64;     // 'end'
+
+  // for tree, we write a root height
+
+  // for each node, we only read/write two information:
+  // 1. number of keys (attr_t, int32)
+  // 2. byte stream for key data (sizeof(V) * nkeys())
+
+  // all other information can be inferred during tree traversal
+
+  // number of max bytes for serializing/deserializing a single node
+  static constexpr std::size_t keydata_size = sizeof(V) * disk_max_nkeys;
+
+  // maximum possible height for B-Tree
+  // if height exceeds this value, this means that serialization/deserialization
+  // size will exceed 16TB, much more likely a user mistake or a malicious
+  // attack
+  static constexpr std::size_t max_possible_height =
+      (44UL - std::bit_width(static_cast<std::size_t>(2 * Fanout))) /
+      std::bit_width(keydata_size);
+
+  friend std::istream &operator>>(std::istream &is,
+                                  BTreeBase &tree) requires(is_disk_) {
+    std::uint64_t tree_code = 0;
+    if (!is.read(reinterpret_cast<char *>(&tree_code), sizeof(std::uint64_t))) {
+      std::cerr << "Tree deserialization: begin code parse error\n";
+      return is;
+    }
+    if (tree_code != begin_code) {
+      std::cerr << "Tree deserialization: begin code is invalid\n";
+      return is;
+    }
+
+    attr_t tree_height = 0;
+    if (!is.read(reinterpret_cast<char *>(&tree_height), sizeof(attr_t))) {
+      std::cerr << "Tree deserialization: tree height parse error\n";
+      return is;
+    }
+    if (static_cast<std::size_t>(tree_height) > max_possible_height) {
+      std::cerr << "Tree deserialization: height is invalid\n";
+      return is;
+    }
+
+    auto node = tree.root_.get();
+    assert(node);
+
+    if (!tree.deserialize_node(is, node, 0, tree_height)) {
+      return is;
+    }
+    if (!is.read(reinterpret_cast<char *>(&tree_code), sizeof(std::uint64_t))) {
+      std::cerr << "Tree deserialization: end code parse error\n";
+      tree.clear();
+      return is;
+    }
+    if (tree_code != end_code) {
+      std::cerr << "Tree deserialization: end code is invalid\n";
+      tree.clear();
+      return is;
+    }
+    tree.set_begin();
+    assert(tree.verify());
+    return is;
+  }
+
+  // preorder DFS traversal
+  bool deserialize_node(std::istream &is, Node *node, attr_t node_index,
+                        attr_t node_height) requires(is_disk_) {
+    assert(node);
+    node->index_ = node_index;
+    node->height_ = node_height;
+    if (!is.read(reinterpret_cast<char *>(&node->num_keys_), sizeof(attr_t))) {
+      std::cerr << "Tree deserialization: nkeys parse error\n";
+      return false;
+    }
+    if (node->num_keys_ >= 2 * Fanout ||
+        (node != root_.get() && node->num_keys_ < Fanout - 1) ||
+        node->num_keys_ < 0) {
+      std::cerr << "Tree deserialization: nkeys is invalid\n";
+      return false;
+    }
+    if (!is.read(reinterpret_cast<char *>(node->keys_.data()),
+                 static_cast<std::size_t>(node->num_keys_) * sizeof(V))) {
+      std::cerr << "Tree deserialization: key data read error\n";
+      return false;
+    }
+    node->size_ = node->num_keys_;
+    if (node_height > 0) {
+      node->children_.reserve(2 * Fanout);
+      node->children_.resize(node->num_keys_ + 1);
+      for (attr_t i = 0; i <= node->num_keys_; ++i) {
+        node->children_[i] = std::make_unique<Node>(alloc_);
+        node->children_[i]->parent_ = node;
+        if (!deserialize_node(is, node->children_[i].get(), i,
+                              node_height - 1)) {
+          return false;
+        }
+      }
+    }
+    if (node->parent_) {
+      node->parent_->size_ += node->size_;
+    }
+    return true;
+  }
+
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const BTreeBase &tree) requires(is_disk_) {
+    std::uint64_t tree_code = begin_code;
+    if (!os.write(reinterpret_cast<char *>(&tree_code),
+                  sizeof(std::uint64_t))) {
+      std::cerr << "Tree serialization: begin code write error\n";
+      return os;
+    }
+
+    attr_t tree_height = tree.height();
+    if (!os.write(reinterpret_cast<char *>(&tree_height), sizeof(attr_t))) {
+      std::cerr << "Tree serialization: tree height write error\n";
+      return os;
+    }
+
+    auto node = tree.root_.get();
+    assert(node);
+
+    if (!tree.serialize_node(os, node)) {
+      return os;
+    }
+    tree_code = end_code;
+    if (!os.write(reinterpret_cast<char *>(&tree_code),
+                  sizeof(std::uint64_t))) {
+      std::cerr << "Tree serialization: end code write error\n";
+      return os;
+    }
+    return os;
+  }
+
+  // preorder DFS traversal
+  bool serialize_node(std::ostream &os, const Node *node) const
+      requires(is_disk_) {
+    assert(node);
+    if (!os.write(reinterpret_cast<const char *>(&node->num_keys_),
+                  sizeof(attr_t))) {
+      std::cerr << "Tree serialization: nkeys write error\n";
+      return false;
+    }
+    if (!os.write(reinterpret_cast<const char *>(node->keys_.data()),
+                  static_cast<std::size_t>(node->num_keys_) * sizeof(V))) {
+      std::cerr << "Tree serialization: key data write error\n";
+      return false;
+    }
+    if (node->height_ > 0) {
+      for (attr_t i = 0; i <= node->num_keys_; ++i) {
+        if (!serialize_node(os, node->children_[i].get())) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   template <Containable K_, typename V_, attr_t Fanout_, attr_t FanoutLeaf_,
