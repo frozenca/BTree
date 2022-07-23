@@ -1634,11 +1634,15 @@ join(BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree_left,
   constexpr bool is_disk_ = Tree::is_disk_;
 
   V mid_value{std::forward<T>(raw_value)};
-  assert(tree_left.empty() ||
-         !Comp{}(Proj{}(mid_value), Proj{}(*tree_left.crbegin())));
-  assert(tree_right.empty() ||
-         !Comp{}(Proj{}(*tree_right.cbegin()), Proj{}(mid_value)));
-  assert(tree_left.alloc_ == tree_right.alloc_);
+  if ((!tree_left.empty() &&
+       Comp{}(Proj{}(mid_value), Proj{}(*tree_left.crbegin()))) ||
+      (!tree_right.empty() &&
+       Comp{}(Proj{}(*tree_right.cbegin()), Proj{}(mid_value)))) {
+    throw std::invalid_argument("Join() key order is invalid\n");
+  }
+  if (tree_left.alloc_ != tree_right.alloc_) {
+    throw std::invalid_argument("Join() two allocators are different\n");
+  }
 
   auto height_left = tree_left.root_->height_;
   auto height_right = tree_right.root_->height_;
