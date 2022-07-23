@@ -6,7 +6,7 @@
 
 namespace frozenca {
 
-template <DiskAllocable K, DiskAllocable V, index_t t, typename Comp,
+template <DiskAllocable K, DiskAllocable V, attr_t t, typename Comp,
           bool AllowDup>
 class DiskBTreeBase : public BTreeBase<K, V, t, t, Comp, AllowDup,
                                        AllocatorFixed<V, 2 * t - 1>> {
@@ -35,17 +35,17 @@ public:
   }
 };
 
-template <DiskAllocable K, index_t t = 64, typename Comp = std::ranges::less>
+template <DiskAllocable K, attr_t t = 64, typename Comp = std::ranges::less>
 using DiskBTreeSet = DiskBTreeBase<K, K, t, Comp, false>;
 
-template <DiskAllocable K, index_t t = 64, typename Comp = std::ranges::less>
+template <DiskAllocable K, attr_t t = 64, typename Comp = std::ranges::less>
 using DiskBTreeMultiSet = DiskBTreeBase<K, K, t, Comp, true>;
 
-template <DiskAllocable K, DiskAllocable V, index_t t = 64,
+template <DiskAllocable K, DiskAllocable V, attr_t t = 64,
           typename Comp = std::ranges::less>
 using DiskBTreeMap = DiskBTreeBase<K, BTreePair<K, V>, t, Comp, false>;
 
-template <DiskAllocable K, DiskAllocable V, index_t t = 64,
+template <DiskAllocable K, DiskAllocable V, attr_t t = 64,
           typename Comp = std::ranges::less>
 using DiskBTreeMultiMap = DiskBTreeBase<K, BTreePair<K, V>, t, Comp, true>;
 
