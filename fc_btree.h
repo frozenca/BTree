@@ -2133,22 +2133,22 @@ split(
 
 template <Containable K, attr_t t = 2, attr_t t_leaf = 2,
           typename Comp = std::ranges::less, typename Alloc = std::allocator<K>>
-using BTreeSet = BTreeBase<K, K, t, t_leaf, Comp, false, Alloc>;
+using BTreeSet = BTreeBase<K, K, t, t, Comp, false, Alloc>;
 
 template <Containable K, attr_t t = 2, attr_t t_leaf = 2,
           typename Comp = std::ranges::less, typename Alloc = std::allocator<K>>
-using BTreeMultiSet = BTreeBase<K, K, t, t_leaf, Comp, true, Alloc>;
+using BTreeMultiSet = BTreeBase<K, K, t, t, Comp, true, Alloc>;
 
 template <Containable K, Containable V, attr_t t = 2, attr_t t_leaf = 2,
           typename Comp = std::ranges::less,
           typename Alloc = std::allocator<BTreePair<K, V>>>
-using BTreeMap = BTreeBase<K, BTreePair<K, V>, t, t_leaf, Comp, false, Alloc>;
+using BTreeMap = BTreeBase<K, BTreePair<K, V>, t, t, Comp, false, Alloc>;
 
 template <Containable K, Containable V, attr_t t = 2, attr_t t_leaf = 2,
           typename Comp = std::ranges::less,
           typename Alloc = std::allocator<BTreePair<K, V>>>
 using BTreeMultiMap =
-    BTreeBase<K, BTreePair<K, V>, t, t_leaf, Comp, true, Alloc>;
+    BTreeBase<K, BTreePair<K, V>, t, t, Comp, true, Alloc>;
 
 } // namespace frozenca
 
