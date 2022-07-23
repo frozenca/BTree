@@ -18,7 +18,6 @@
 #include <utility>
 #include <vector>
 
-
 namespace frozenca {
 
 template <typename T>
@@ -36,11 +35,11 @@ template <Containable K, Containable V> struct BTreePair {
 
   operator std::pair<const K &, V &>() noexcept { return {first, second}; }
 
-  friend bool operator==(const BTreePair &lhs, const BTreePair &rhs) {
+  friend bool operator==(const BTreePair &lhs, const BTreePair &rhs) noexcept {
     return lhs.first == rhs.first && lhs.second == rhs.second;
   }
 
-  friend bool operator!=(const BTreePair &lhs, const BTreePair &rhs) {
+  friend bool operator!=(const BTreePair &lhs, const BTreePair &rhs) noexcept {
     return !(lhs == rhs);
   }
 };
@@ -730,6 +729,7 @@ protected:
       std::ranges::move(sibling->children_ | std::views::take(n),
                         std::back_inserter(node->children_));
       std::shift_left(sibling->children_.begin(), sibling->children_.end(), n);
+      sibling->children_.resize(std::ssize(sibling->children_) - n);
       attr_t sibling_index = 0;
       for (auto &&child : sibling->children_) {
         child->index_ = sibling_index++;
@@ -803,7 +803,7 @@ protected:
       node->keys_[node->num_keys_] = parent->keys_[node->index_ - 1];
       node->num_keys_++;
       parent->keys_[node->index_ - 1] = sibling->keys_[sibling->num_keys_ - 1];
-      // TODO:???
+
       std::rotate(
           std::make_reverse_iterator(node->keys_.begin() + node->num_keys_),
           std::make_reverse_iterator(node->keys_.begin() + node->num_keys_ - n),
@@ -1227,9 +1227,9 @@ protected:
     while (true) {
       auto i =
           std::distance(x->keys_.begin(),
-                        std::ranges::lower_bound(
-                            x->keys_.begin(), x->keys_.begin() + x->num_keys_,
-                            key, Comp{}, Proj{}));
+                        std::ranges::lower_bound(x->keys_.begin(),
+                                                 x->keys_.begin() + x->nkeys(),
+                                                 key, Comp{}, Proj{}));
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) {
         // key found
         assert(x->is_leaf() || i + 1 < std::ssize(x->children_));
