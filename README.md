@@ -132,6 +132,16 @@ Time to lookup 10000000 elements: 15527.5 ms
 Time to erase 10000000 elements: 18128.5 ms
 ```
 
+## Sanity check and unit test
+
+If you want to contribute and test the code, please uncomment these lines, which will do full sanity checks on the entire tree:
+
+https://github.com/frozenca/BTree/blob/adf3c3309f45a65010d767df674c232c12f5c00a/fc_btree.h#L350
+https://github.com/frozenca/BTree/blob/adf3c3309f45a65010d767df674c232c12f5c00a/fc_btree.h#L531-#L532
+
+and by running ```test/unittest.cpp``` you can verify basic operations.
+
+
 ## License
 
 This library is licensed under Apache License Version 2.0 with LLVM Exceptions (LICENSE-Apache2-LLVM or https://llvm.org/foundation/relicensing/LICENSE.txt)
