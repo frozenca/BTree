@@ -358,7 +358,7 @@ public:
       std::reverse_iterator<const_iterator_type>;
 
 private:
-  Alloc alloc_;
+  [[no_unique_address]] Alloc alloc_;
   std::unique_ptr<Node> root_;
   const_iterator_type begin_;
 
