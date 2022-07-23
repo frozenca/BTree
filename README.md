@@ -105,13 +105,15 @@ You can use a specialized variant that utilizes memory-mapped disk files and an 
 
 For this variant, supported types have stricter type constraints: it should satisfy ```std::trivially_copyable_v```, and its alignment should at least be the alignment of the pointer type in the machine (for both key type and value type for key-value pairs). This variant has a larger default fanout, 64.
 
-Serialization/deserialization of B-Trees via byte streams using ```operator<<``` and ```operator>>``` is also supported when key types (and value types, if present) meet the above requirements. You can refer how to do serialization/deserialization in ```test/rwtest.cpp```.
-
 The following code initializes a ```frozenca::DiskBTreeSet```, which generates a memory-mapped disk file ```database.bin``` and uses it, with an initial byte size of 32 megabytes. If the third argument is ```true```, it will destroy the existing file and create a new one (default is ```false```). You can't extend the pool size of the memory-mapped disk file once you initialized (doing so invalidates all pointers in the associated allocator).
 
 ```cpp
 fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
 ```
+
+## Serialization and deserialization
+
+Serialization/deserialization of B-Trees via byte streams using ```operator<<``` and ```operator>>``` is also supported when key types (and value types, if present) meet the above requirements for disk B-Tree. You can refer how to do serialization/deserialization in ```test/rwtest.cpp```.
 
 ## Performance
 
