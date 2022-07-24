@@ -91,7 +91,7 @@ Other than regular operations supported by ```std::set``` and its friends (```lo
 
 ```tree.enumerate(const key_type& a, const key_type& b)``` : Range query. Returns the range of values for their key in ```[a, b]```. Time complexity: ```O(log n)```
 
-```tree.insert_range(ForwardIter first, ForwardIter last)``` : Inserts the elements in ```[first, last)```. The range can be inserted only if all of elements in the range can be fit between two elements in the tree. The range version also exists. Time complexity: ```O(k log k + log n)```
+```tree.insert_range(ForwardIter first, ForwardIter last)``` : Inserts the elements in ```[first, last)```. The range version also exists. Time complexity: ```O(k log k + log n)``` if all of elements in the range can be fit between two elements in the tree, otherwise ```O(k log n)```
 
 ```tree.erase_range(const key_type& a, const key_type&)``` : Erases the elements for their key in ```[a, b)```. Time complexity: ```O(log n)```
 
