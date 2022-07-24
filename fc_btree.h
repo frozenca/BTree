@@ -93,6 +93,12 @@ template <Containable K, typename V, attr_t Fanout, typename Comp,
 requires(Fanout >= 2) class BTreeBase;
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc>
+BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>
+join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left,
+     BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_right);
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc, typename T>
 BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>
 join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
@@ -1795,6 +1801,12 @@ protected:
 
 public:
   template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
+            bool AllowDup_, typename Alloc_>
+  friend BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>
+  join(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_> &&tree_left,
+       BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_> &&tree_right);
+
+  template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
             bool AllowDup_, typename Alloc_, typename T>
   friend BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>
   join(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_> &&tree_left,
@@ -1963,6 +1975,24 @@ public:
         T &&raw_value) requires
       std::is_constructible_v<V_, std::remove_cvref_t<T>>;
 };
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc>
+BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>
+join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left,
+     BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_right) {
+  if (tree_left.empty()) {
+    return std::move(tree_right);
+  } else if (tree_right.empty()) {
+    return std::move(tree_left);
+  } else {
+    auto it = tree_right.begin();
+    V mid_value = *it;
+    tree_right.erase(it);
+    return join(std::move(tree_left), std::move(mid_value),
+                std::move(tree_right));
+  }
+}
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc, typename T>

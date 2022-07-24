@@ -193,6 +193,24 @@ int main() {
     std::cout << "OK\n";
   }
   {
+    std::cout << "Two arguments join test\n";
+    fc::BTreeSet<int> tree1;
+    for (int i = 0; i < 100; ++i) {
+      tree1.insert(i);
+    }
+    fc::BTreeSet<int> tree2;
+    for (int i = 100; i < 200; ++i) {
+      tree2.insert(i);
+    }
+    auto tree3 = fc::join(std::move(tree1), std::move(tree2));
+    for (int i = 0; i < 200; ++i) {
+      if (!tree3.contains(i)) {
+        std::cout << "Join fail\n";
+      }
+    }
+    std::cout << "OK\n";
+  }
+  {
     std::cout << "Multiset erase test\n";
     fc::BTreeMultiSet<int> tree1;
     tree1.insert(0);
