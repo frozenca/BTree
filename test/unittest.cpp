@@ -262,12 +262,6 @@ int main() {
   }
   {
     std::cout << "count() test\n";
-    fc::BTreeSet<int> btree;
-    btree.insert(1);
-    btree.insert(1);
-    if (btree.count(1) != 1 || btree.count(0) != 0 || btree.count(2) != 0) {
-      std::cout << "count() failed\n";
-    }
     fc::BTreeMultiSet<int> btree2;
     btree2.insert(1);
     btree2.insert(1);

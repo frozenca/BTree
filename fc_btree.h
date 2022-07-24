@@ -1510,7 +1510,7 @@ public:
     return get_order(iter);
   }
 
-  attr_t count(const K &key) const {
+  attr_t count(const K &key) const requires (AllowDup) {
     auto first = find_lower_bound(key);
     auto last = find_upper_bound(key);
     attr_t first_order = get_order(first);
