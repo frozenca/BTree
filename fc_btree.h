@@ -873,7 +873,7 @@ protected:
     return cend();
   }
 
-  nonconst_iterator_type find_lower_bound(const K &key) {
+  nonconst_iterator_type find_lower_bound(const K &key, bool climb = true) {
     auto x = root_.get();
     while (x) {
       auto i =
@@ -883,7 +883,9 @@ protected:
                                                  key, Comp{}, Proj{}));
       if (x->is_leaf()) {
         auto it = nonconst_iterator_type(x, i);
-        it.climb();
+        if (climb) {
+          it.climb();
+        }
         return it;
       } else {
         x = x->children_[i].get();
@@ -892,7 +894,7 @@ protected:
     return nonconst_iterator_type(end());
   }
 
-  const_iterator_type find_lower_bound(const K &key) const {
+  const_iterator_type find_lower_bound(const K &key, bool climb = true) const {
     auto x = root_.get();
     while (x) {
       auto i =
@@ -902,7 +904,9 @@ protected:
                                                  key, Comp{}, Proj{}));
       if (x->is_leaf()) {
         auto it = const_iterator_type(x, i);
-        it.climb();
+        if (climb) {
+          it.climb();
+        }
         return it;
       } else {
         x = x->children_[i].get();
@@ -911,7 +915,7 @@ protected:
     return cend();
   }
 
-  nonconst_iterator_type find_upper_bound(const K &key) {
+  nonconst_iterator_type find_upper_bound(const K &key, bool climb = true) {
     auto x = root_.get();
     while (x) {
       auto i =
@@ -921,7 +925,9 @@ protected:
                                                  key, Comp{}, Proj{}));
       if (x->is_leaf()) {
         auto it = nonconst_iterator_type(x, i);
-        it.climb();
+        if (climb) {
+          it.climb();
+        }
         return it;
       } else {
         x = x->children_[i].get();
@@ -930,7 +936,7 @@ protected:
     return nonconst_iterator_type(end());
   }
 
-  const_iterator_type find_upper_bound(const K &key) const {
+  const_iterator_type find_upper_bound(const K &key, bool climb = true) const {
     auto x = root_.get();
     while (x) {
       auto i =
@@ -940,7 +946,9 @@ protected:
                                                  key, Comp{}, Proj{}));
       if (x->is_leaf()) {
         auto it = const_iterator_type(x, i);
-        it.climb();
+        if (climb) {
+          it.climb();
+        }
         return it;
       } else {
         x = x->children_[i].get();
@@ -1353,16 +1361,39 @@ protected:
     }
   }
 
-  size_type erase_range(iterator_type first, iterator_type last) {
-    if (first == begin_ && last == end()) {
+private:
+  static constexpr attr_t bulk_erase_threshold = 100;
+
+public:
+  size_type erase_range(const_iterator_type first, const_iterator_type last) {
+    if (first == cend()) {
+      return 0;
+    }
+    if (first == begin_ && last == cend()) {
       auto cnt = size();
       clear();
       return cnt;
     }
-    auto cnt = std::distance(first, last);
-    for (auto i = cnt; i >= 0; --i) {
-      first = erase(first);
+
+    attr_t first_order = get_order(first);
+    attr_t last_order = (last == cend()) ? root_->size_ : get_order(last);
+
+    attr_t cnt = last_order - first_order;
+    if (cnt < bulk_erase_threshold) {
+      first.climb();
+      for (attr_t i = 0; i < cnt; ++i) {
+        first = erase(first);
+      }
+      return cnt;
     }
+
+    K first_key = Proj{}(*first);
+
+    auto [tree1, tree2] = split_to_two_trees(first, last);
+    auto final_tree = join(std::move(tree1), first_key, std::move(tree2));
+    final_tree.erase(final_tree.lower_bound(first_key));
+
+    this->swap(final_tree);
     return cnt;
   }
 
@@ -1496,6 +1527,17 @@ protected:
     }
   }
 
+  std::vector<attr_t> get_path_from_root(const_iterator_type iter) const {
+    auto node = iter.node_;
+    std::vector<attr_t> hints;
+    hints.push_back(iter.index_);
+    while (node && node->parent_) {
+      hints.push_back(node->index_);
+      node = node->parent_;
+    }
+    return hints;
+  }
+
 public:
   std::conditional_t<AllowDup, iterator_type, std::pair<iterator_type, bool>>
   insert(const V &key) {
@@ -1559,21 +1601,15 @@ public:
     if (iter == cend()) {
       throw std::invalid_argument("attempt to erase cend()");
     }
-    auto node = iter.node_;
-    std::vector<attr_t> hints;
-    hints.push_back(iter.index_);
-    while (node && node->parent_) {
-      hints.push_back(node->index_);
-      node = node->parent_;
-    }
+    std::vector<attr_t> hints = get_path_from_root(iter);
     V value(std::move(*iter));
     return erase_hint(value, hints);
   }
 
   size_type erase(const K &key) {
     if constexpr (AllowDup) {
-      return erase_range(iterator_type(find_lower_bound(key)),
-                         iterator_type(find_upper_bound(key)));
+      return erase_range(const_iterator_type(find_lower_bound(key, false)),
+                         const_iterator_type(find_upper_bound(key, false)));
     } else {
       return erase_lb(root_.get(), key);
     }
@@ -1767,6 +1803,293 @@ public:
            &&tree_right) requires
       std::is_constructible_v<V_, std::remove_cvref_t<T>>;
 
+protected:
+  std::pair<BTreeBase, BTreeBase> split_to_two_trees(const_iterator_type iter) {
+    BTreeBase tree_left(alloc_);
+    BTreeBase tree_right(alloc_);
+
+    auto indices = get_path_from_root(iter);
+    std::ranges::reverse(indices);
+    auto x = iter.node_;
+
+    while (!indices.empty()) {
+      auto i = indices.back();
+      indices.pop_back();
+
+      auto lroot = tree_left.root_.get();
+      auto rroot = tree_right.root_.get();
+
+      if (x->is_leaf()) {
+        assert(lroot->size_ == 0 && rroot->size_ == 0);
+
+        if (i > 0) {
+          if constexpr (is_disk_) {
+            std::memcpy(lroot->keys_.data(), x->keys_.data(), i * sizeof(V));
+            lroot->num_keys_ += i;
+          } else {
+            // send left i keys to lroot
+            std::ranges::move(x->keys_ | std::views::take(i),
+                              std::back_inserter(lroot->keys_));
+          }
+          lroot->size_ += i;
+        }
+
+        if (i + 1 < x->nkeys()) {
+          auto immigrants = x->nkeys() - (i + 1);
+          if constexpr (is_disk_) {
+            std::memcpy(rroot->keys_.data(), x->keys_.data() + (i + 1),
+                        immigrants * sizeof(V));
+            rroot->num_keys_ += immigrants;
+          } else {
+            // send right n - (i + 1) keys to rroot
+            std::ranges::move(x->keys_ | std::views::drop(i + 1),
+                              std::back_inserter(rroot->keys_));
+          }
+          rroot->size_ += immigrants;
+        }
+
+        x->clear_keys();
+        x = x->parent_;
+      } else {
+        if (i > 0) {
+          BTreeBase supertree_left(alloc_);
+          auto slroot = supertree_left.root_.get();
+          // sltree takes left i - 1 keys, i children
+          // middle key is key[i - 1]
+
+          assert(slroot->size_ == 0);
+
+          if constexpr (is_disk_) {
+            std::memcpy(slroot->keys_.data(), x->keys_.data(),
+                        (i - 1) * sizeof(V));
+            slroot->num_keys_ += (i - 1);
+          } else {
+            std::ranges::move(x->keys_ | std::views::take(i - 1),
+                              std::back_inserter(slroot->keys_));
+          }
+          slroot->size_ += (i - 1);
+
+          slroot->children_.reserve(Fanout * 2);
+
+          std::ranges::move(x->children_ | std::views::take(i),
+                            std::back_inserter(slroot->children_));
+          slroot->height_ = slroot->children_[0]->height_ + 1;
+          for (auto &&sl_child : slroot->children_) {
+            sl_child->parent_ = slroot;
+            slroot->size_ += sl_child->size_;
+          }
+
+          supertree_left.promote_root_if_necessary();
+          supertree_left.set_begin();
+
+          BTreeBase new_tree_left =
+              join(std::move(supertree_left), std::move(x->keys_[i - 1]),
+                   std::move(tree_left));
+          tree_left = std::move(new_tree_left);
+        }
+
+        if (i + 1 < std::ssize(x->children_)) {
+          BTreeBase supertree_right(alloc_);
+          auto srroot = supertree_right.root_.get();
+          // srtree takes right n - (i + 1) keys, n - (i + 1) children
+          // middle key is key[i]
+
+          assert(srroot->size_ == 0);
+
+          auto immigrants = x->nkeys() - (i + 1);
+          if constexpr (is_disk_) {
+            std::memcpy(srroot->keys_.data(), x->keys_.data() + (i + 1),
+                        immigrants * sizeof(V));
+            srroot->num_keys_ += immigrants;
+          } else {
+            std::ranges::move(x->keys_ | std::views::drop(i + 1),
+                              std::back_inserter(srroot->keys_));
+          }
+          srroot->size_ += immigrants;
+
+          srroot->children_.reserve(Fanout * 2);
+
+          std::ranges::move(x->children_ | std::views::drop(i + 1),
+                            std::back_inserter(srroot->children_));
+          srroot->height_ = srroot->children_[0]->height_ + 1;
+          attr_t sr_index = 0;
+          for (auto &&sr_child : srroot->children_) {
+            sr_child->parent_ = srroot;
+            sr_child->index_ = sr_index++;
+            srroot->size_ += sr_child->size_;
+          }
+
+          supertree_right.promote_root_if_necessary();
+          supertree_right.set_begin();
+
+          BTreeBase new_tree_right =
+              join(std::move(tree_right), std::move(x->keys_[i]),
+                   std::move(supertree_right));
+          tree_right = std::move(new_tree_right);
+        }
+
+        x->clear_keys();
+        x->children_.clear();
+        x = x->parent_;
+      }
+    }
+    assert(!x && indices.empty());
+    assert(tree_left.verify());
+    assert(tree_right.verify());
+    return {std::move(tree_left), std::move(tree_right)};
+  }
+
+  std::pair<BTreeBase, BTreeBase>
+  split_to_two_trees(const_iterator_type iter_lb, const_iterator_type iter_ub) {
+    BTreeBase tree_left(alloc_);
+    BTreeBase tree_right(alloc_);
+    auto lindices = get_path_from_root(iter_lb);
+    auto xl = iter_lb.node_;
+    std::ranges::reverse(lindices);
+    auto rindices = get_path_from_root(iter_ub);
+    auto xr = iter_ub.node_;
+    std::ranges::reverse(rindices);
+
+    while (!lindices.empty()) {
+      auto il = lindices.back();
+      lindices.pop_back();
+
+      auto lroot = tree_left.root_.get();
+
+      if (xl->is_leaf()) {
+        assert(lroot->size_ == 0);
+
+        if (il > 0) {
+          if constexpr (is_disk_) {
+            std::memcpy(lroot->keys_.data(), xl->keys_.data(), il * sizeof(V));
+            lroot->num_keys_ += il;
+          } else {
+            // send left i keys to lroot
+            std::ranges::move(xl->keys_ | std::views::take(il),
+                              std::back_inserter(lroot->keys_));
+          }
+          lroot->size_ += il;
+        }
+
+        xl = xl->parent_;
+      } else {
+        if (il > 0) {
+          BTreeBase supertree_left(alloc_);
+          auto slroot = supertree_left.root_.get();
+          // sltree takes left i - 1 keys, i children
+          // middle key is key[i - 1]
+
+          assert(slroot->size_ == 0);
+
+          if constexpr (is_disk_) {
+            std::memcpy(slroot->keys_.data(), xl->keys_.data(),
+                        (il - 1) * sizeof(V));
+            slroot->num_keys_ += (il - 1);
+          } else {
+            std::ranges::move(xl->keys_ | std::views::take(il - 1),
+                              std::back_inserter(slroot->keys_));
+          }
+          slroot->size_ += (il - 1);
+
+          slroot->children_.reserve(Fanout * 2);
+
+          std::ranges::move(xl->children_ | std::views::take(il),
+                            std::back_inserter(slroot->children_));
+          slroot->height_ = slroot->children_[0]->height_ + 1;
+          for (auto &&sl_child : slroot->children_) {
+            sl_child->parent_ = slroot;
+            slroot->size_ += sl_child->size_;
+          }
+
+          supertree_left.promote_root_if_necessary();
+          supertree_left.set_begin();
+
+          BTreeBase new_tree_left =
+              join(std::move(supertree_left), std::move(xl->keys_[il - 1]),
+                   std::move(tree_left));
+          tree_left = std::move(new_tree_left);
+        }
+
+        xl = xl->parent_;
+      }
+    }
+    while (!rindices.empty()) {
+      auto ir = rindices.back();
+      rindices.pop_back();
+
+      auto rroot = tree_right.root_.get();
+
+      if (xr->is_leaf()) {
+        assert(rroot->size_ == 0);
+
+        if (ir < xr->nkeys()) {
+          auto immigrants = xr->nkeys() - ir;
+          if constexpr (is_disk_) {
+            std::memcpy(rroot->keys_.data(), xr->keys_.data() + ir,
+                        immigrants * sizeof(V));
+            rroot->num_keys_ += immigrants;
+          } else {
+            // send right n - (i + 1) keys to rroot
+            std::ranges::move(xr->keys_ | std::views::drop(ir),
+                              std::back_inserter(rroot->keys_));
+          }
+          rroot->size_ += immigrants;
+        }
+
+        xr = xr->parent_;
+      } else {
+
+        if (ir + 1 < std::ssize(xr->children_)) {
+          BTreeBase supertree_right(alloc_);
+          auto srroot = supertree_right.root_.get();
+          // srtree takes right n - (i + 1) keys, n - (i + 1) children
+          // middle key is key[i]
+
+          assert(srroot->size_ == 0);
+
+          auto immigrants = xr->nkeys() - (ir + 1);
+          if constexpr (is_disk_) {
+            std::memcpy(srroot->keys_.data(), xr->keys_.data() + (ir + 1),
+                        immigrants * sizeof(V));
+            srroot->num_keys_ += immigrants;
+          } else {
+            std::ranges::move(xr->keys_ | std::views::drop(ir + 1),
+                              std::back_inserter(srroot->keys_));
+          }
+          srroot->size_ += immigrants;
+
+          srroot->children_.reserve(Fanout * 2);
+
+          std::ranges::move(xr->children_ | std::views::drop(ir + 1),
+                            std::back_inserter(srroot->children_));
+          srroot->height_ = srroot->children_[0]->height_ + 1;
+          attr_t sr_index = 0;
+          for (auto &&sr_child : srroot->children_) {
+            sr_child->parent_ = srroot;
+            sr_child->index_ = sr_index++;
+            srroot->size_ += sr_child->size_;
+          }
+
+          supertree_right.promote_root_if_necessary();
+          supertree_right.set_begin();
+
+          BTreeBase new_tree_right =
+              join(std::move(tree_right), std::move(xr->keys_[ir]),
+                   std::move(supertree_right));
+          tree_right = std::move(new_tree_right);
+        }
+
+        xr = xr->parent_;
+      }
+    }
+    assert(!xl && !xr && lindices.empty() && rindices.empty());
+    assert(tree_left.verify());
+    assert(tree_right.verify());
+    clear();
+    return {std::move(tree_left), std::move(tree_right)};
+  }
+
+public:
   template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
             bool AllowDup_, typename Alloc_, typename T>
   friend std::pair<BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>,
@@ -1948,171 +2271,25 @@ template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc, typename T>
 std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>,
           BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>>
-split(
-    BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
-    T &&raw_value) requires std::is_constructible_v<V, std::remove_cvref_t<T>> {
+split(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
+      T &&raw_value) requires(std::is_constructible_v<V,
+                                                      std::remove_cvref_t<T>>) {
   using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
-  using Proj = Tree::Proj;
-  constexpr bool is_disk_ = Tree::is_disk_;
-
-  Tree tree_left(tree.alloc_);
-  Tree tree_right(tree.alloc_);
-
   if (tree.empty()) {
-    assert(tree.root_->size_ ==
-           tree_left.root_->size_ + tree_right.root_->size_);
+    Tree tree_left(tree.alloc_);
+    Tree tree_right(tree.alloc_);
     return {std::move(tree_left), std::move(tree_right)};
   }
 
   V mid_value{std::forward<T>(raw_value)};
+  if constexpr (!AllowDup) {
+    return tree.split_to_two_trees(
+        tree.find_lower_bound(std::move(mid_value), false));
 
-  auto x = tree.root_.get();
-
-  std::vector<attr_t> indices;
-  while (x) {
-    auto i = std::distance(x->keys_.begin(),
-                           std::ranges::lower_bound(
-                               x->keys_.begin(), x->keys_.begin() + x->nkeys(),
-                               mid_value, Comp{}, Proj{}));
-    indices.push_back(i);
-    if (x->is_leaf()) {
-      break;
-    } else {
-      x = x->children_[i].get();
-    }
+  } else {
+    return tree.split_to_two_trees(tree.find_lower_bound(mid_value, false),
+                                   tree.find_upper_bound(mid_value, false));
   }
-
-  while (!indices.empty()) {
-    auto i = indices.back();
-    indices.pop_back();
-
-    auto lroot = tree_left.root_.get();
-    auto rroot = tree_right.root_.get();
-
-    if (x->is_leaf()) {
-      assert(lroot->size_ == 0 && rroot->size_ == 0);
-
-      if (i > 0) {
-        if constexpr (is_disk_) {
-          std::memcpy(lroot->keys_.data(), x->keys_.data(), i * sizeof(V));
-          lroot->num_keys_ += i;
-        } else {
-          // send left i keys to lroot
-          std::ranges::move(x->keys_ | std::views::take(i),
-                            std::back_inserter(lroot->keys_));
-        }
-        lroot->size_ += i;
-      }
-
-      if (i + 1 < x->nkeys()) {
-        auto immigrants = x->nkeys() - (i + 1);
-        if constexpr (is_disk_) {
-          std::memcpy(rroot->keys_.data(), x->keys_.data() + (i + 1),
-                      immigrants * sizeof(V));
-          rroot->num_keys_ += immigrants;
-        } else {
-          // send right n - (i + 1) keys to rroot
-          std::ranges::move(x->keys_ | std::views::drop(i + 1),
-                            std::back_inserter(rroot->keys_));
-        }
-        rroot->size_ += immigrants;
-      }
-
-      x->clear_keys();
-      x = x->parent_;
-    } else {
-      if (i > 0) {
-        Tree supertree_left(tree.alloc_);
-        auto slroot = supertree_left.root_.get();
-        // sltree takes left i - 1 keys, i children
-        // middle key is key[i - 1]
-
-        assert(slroot->size_ == 0);
-
-        if constexpr (is_disk_) {
-          std::memcpy(slroot->keys_.data(), x->keys_.data(),
-                      (i - 1) * sizeof(V));
-          slroot->num_keys_ += (i - 1);
-        } else {
-          std::ranges::move(x->keys_ | std::views::take(i - 1),
-                            std::back_inserter(slroot->keys_));
-        }
-        slroot->size_ += (i - 1);
-
-        slroot->children_.reserve(Fanout * 2);
-
-        std::ranges::move(x->children_ | std::views::take(i),
-                          std::back_inserter(slroot->children_));
-        slroot->height_ = slroot->children_[0]->height_ + 1;
-        for (auto &&sl_child : slroot->children_) {
-          sl_child->parent_ = slroot;
-          slroot->size_ += sl_child->size_;
-        }
-
-        supertree_left.promote_root_if_necessary();
-        supertree_left.set_begin();
-
-        Tree new_tree_left =
-            join(std::move(supertree_left), std::move(x->keys_[i - 1]),
-                 std::move(tree_left));
-        tree_left = std::move(new_tree_left);
-      }
-
-      if (i + 1 < std::ssize(x->children_)) {
-        Tree supertree_right(tree.alloc_);
-        auto srroot = supertree_right.root_.get();
-        // srtree takes right n - (i + 1) keys, n - (i + 1) children
-        // middle key is key[i]
-
-        assert(srroot->size_ == 0);
-
-        auto immigrants = x->nkeys() - (i + 1);
-        if constexpr (is_disk_) {
-          std::memcpy(srroot->keys_.data(), x->keys_.data() + (i + 1),
-                      immigrants * sizeof(V));
-          srroot->num_keys_ += immigrants;
-        } else {
-          std::ranges::move(x->keys_ | std::views::drop(i + 1),
-                            std::back_inserter(srroot->keys_));
-        }
-        srroot->size_ += immigrants;
-
-        srroot->children_.reserve(Fanout * 2);
-
-        std::ranges::move(x->children_ | std::views::drop(i + 1),
-                          std::back_inserter(srroot->children_));
-        srroot->height_ = srroot->children_[0]->height_ + 1;
-        attr_t sr_index = 0;
-        for (auto &&sr_child : srroot->children_) {
-          sr_child->parent_ = srroot;
-          sr_child->index_ = sr_index++;
-          srroot->size_ += sr_child->size_;
-        }
-
-        supertree_right.promote_root_if_necessary();
-        supertree_right.set_begin();
-
-        Tree new_tree_right =
-            join(std::move(tree_right), std::move(x->keys_[i]),
-                 std::move(supertree_right));
-        tree_right = std::move(new_tree_right);
-      }
-
-      x->clear_keys();
-      x->children_.clear();
-      x = x->parent_;
-    }
-  }
-
-  assert(!x && indices.empty());
-  assert(tree_left.verify());
-  assert(tree_right.verify());
-  assert(tree.root_->size_ ==
-             tree_left.root_->size_ + tree_right.root_->size_ ||
-         tree.root_->size_ ==
-             tree_left.root_->size_ + tree_right.root_->size_ + 1);
-
-  return {std::move(tree_left), std::move(tree_right)};
 }
 
 template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,

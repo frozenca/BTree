@@ -168,12 +168,41 @@ int main() {
         std::cout << "Split failed\n";
       }
     }
-    for (int i = 201; i < 300; ++i) {
+    for (int i = 200; i < 300; ++i) {
       if (!btree5.contains(i)) {
         std::cout << "Split failed\n";
       }
     }
+    std::cout << "Multiset split test\n";
 
+    fc::BTreeMultiSet<int> btree6;
+    btree6.insert(0);
+    btree6.insert(2);
+    for (int i = 0; i < 100; ++i) {
+      btree6.insert(1);
+    }
+    auto [btree7, btree8] = fc::split(std::move(btree6), 1);
+    if (btree7.size() != 1 || btree8.size() != 1) {
+      std::cout << "Split failed: " << btree7.size() << ' ' << btree8.size()
+                << '\n';
+    }
+
+    std::cout << "OK\n";
+  }
+  {
+    std::cout << "Multiset erase test\n";
+    fc::BTreeMultiSet<int> tree1;
+    tree1.insert(0);
+    for (int i = 0; i < 100'000; ++i) {
+      tree1.insert(1);
+    }
+    tree1.insert(2);
+
+    tree1.erase(1);
+
+    if (tree1.size() != 2) {
+      std::cout << "Mutliset erase failed: " << tree1.size() << '\n';
+    }
     std::cout << "OK\n";
   }
 }
