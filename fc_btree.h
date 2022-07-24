@@ -403,14 +403,12 @@ public:
 
   // invariant: K cannot be mutated
   // so if V is K, uses a const iterator.
-  // if V is pair<K, V>, uses a non-const iterator (but only value can
+  // if V is BTreePair<K, V>, uses a non-const iterator (but only value can
   // be mutated)
-
-  // invariant: K cannot be mutated
-  // so if V is K, uses a const iterator.
-  // if V is pair<K, V>, uses a non-const iterator (but only value can
-  // be mutated)
+private:
   using nonconst_iterator_type = BTreeIterator<BTreeNonConstIterTraits>;
+
+public:
   using iterator_type = BTreeIterator<
       std::conditional_t<is_set_, BTreeConstIterTraits, BTreeRefIterTraits>>;
   using const_iterator_type = BTreeIterator<BTreeConstIterTraits>;
@@ -1594,8 +1592,8 @@ public:
     return old_size - size();
   }
 
+private:
   // serialization and deserialization
-
   static constexpr std::uint64_t begin_code = 0x6567696e; // 'begin'
   static constexpr std::uint64_t end_code = 0x656e64;     // 'end'
 
@@ -1618,6 +1616,7 @@ public:
       (44UL - std::bit_width(static_cast<std::size_t>(2 * Fanout))) /
       std::bit_width(keydata_size);
 
+public:
   friend std::istream &operator>>(std::istream &is,
                                   BTreeBase &tree) requires(is_disk_) {
     std::uint64_t tree_code = 0;
@@ -1661,6 +1660,7 @@ public:
     return is;
   }
 
+protected:
   // preorder DFS traversal
   bool deserialize_node(std::istream &is, Node *node, attr_t node_index,
                         attr_t node_height) requires(is_disk_) {
@@ -1701,6 +1701,7 @@ public:
     return true;
   }
 
+public:
   friend std::ostream &operator<<(std::ostream &os,
                                   const BTreeBase &tree) requires(is_disk_) {
     std::uint64_t tree_code = begin_code;
@@ -1731,6 +1732,7 @@ public:
     return os;
   }
 
+protected:
   // preorder DFS traversal
   bool serialize_node(std::ostream &os, const Node *node) const
       requires(is_disk_) {
@@ -1755,6 +1757,7 @@ public:
     return true;
   }
 
+public:
   template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
             bool AllowDup_, typename Alloc_, typename T>
   friend BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>
