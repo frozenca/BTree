@@ -91,9 +91,11 @@ Other than regular operations supported by ```std::set``` and its friends (```lo
 
 ```tree.enumerate(const key_type& a, const key_type& b)``` : Range query. Returns the range of values for their key in ```[a, b]```. Time complexity: ```O(log n)```
 
+```tree.erase_range(const_iterator_type first, const_iterator_type last)``` : Erases the elements in the range, where ```first``` < last```. Time complexity: ```O(log n)```
+
 ```frozenca::join(Tree&& tree1, value_type val, Tree&& tree2)``` : Joins two trees to a single tree. The largest key in ```tree1``` should be less than or equal to the key of ```val``` and the smallest key in ```tree2``` should be greater than or equal to the key of ```val```. Time complexity: ```O(1 + diff_height)```
 
-```frozenca::split(Tree&& tree, value_type val)``` : Splits a tree to two trees, so that the first tree contains keys less than the key of ```val```, and the second tree contains keys greater than the key of ```val```. Time complexity: ```O(log n)```
+```frozenca::split(Tree&& tree, value_type val)``` : Splits a tree to two trees, so that the first tree contains keys less than the key of ```val```, and the second tree contains keys greater than or equal to the key of ```val```. Time complexity: ```O(log n)```
 
 ## Concurrency
 
