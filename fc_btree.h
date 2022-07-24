@@ -119,11 +119,11 @@ requires(Fanout >= 2) class BTreeBase {
         0; // number of keys in this node, used only for disk variant
 
     // can throw bad_alloc
-    explicit Node(Alloc &alloc, bool is_leaf = true) requires(is_disk_)
+    explicit Node(Alloc &alloc) requires(is_disk_)
         : alloc_{alloc},
           keys_(alloc_.allocate(disk_max_nkeys), disk_max_nkeys) {}
 
-    explicit Node(Alloc &alloc, bool is_leaf = true) requires(!is_disk_)
+    explicit Node(Alloc &alloc) requires(!is_disk_)
         : alloc_{alloc}, keys_{alloc_} {
       keys_.reserve(2 * Fanout - 1);
     }
@@ -148,8 +148,7 @@ requires(Fanout >= 2) class BTreeBase {
         children_.reserve(Fanout * 2);
         children_.resize(other.children_.size());
         for (attr_t i = 0; i < std::ssize(other.children_); ++i) {
-          children_[i] =
-              std::make_unique<Node>(alloc_, other.children_[i]->is_leaf());
+          children_[i] = std::make_unique<Node>(alloc_);
           children_[i]->clone(other.children_[i]);
           children_[i]->parent_ = this;
           children_[i]->index_ = i;
@@ -432,7 +431,7 @@ public:
   BTreeBase(const BTreeBase &other) {
     alloc_ = other.alloc_;
     if (other.root_) {
-      root_ = std::make_unique<Node>(alloc_, other.root_->is_leaf());
+      root_ = std::make_unique<Node>(alloc_);
       root_->clone(*(other.root_));
       root_->parent_ = nullptr;
     }
@@ -956,8 +955,7 @@ protected:
     // y->keys_[t - 1] will be a key of y->parent_
     // right t keys of y will be taken by y's right sibling
 
-    auto z = std::make_unique<Node>(alloc_,
-                                    y->is_leaf()); // will be y's right sibling
+    auto z = std::make_unique<Node>(alloc_); // will be y's right sibling
     z->parent_ = x;
     z->index_ = i + 1;
     z->height_ = y->height_;
@@ -1474,7 +1472,7 @@ protected:
   insert_value(T &&key) requires(std::is_same_v<std::remove_cvref_t<T>, V>) {
     if (root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(alloc_, false);
+      auto new_root = std::make_unique<Node>(alloc_);
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
@@ -1513,7 +1511,7 @@ public:
   auto &operator[](T &&raw_key) requires(!is_set_ && !AllowDup) {
     if (root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(alloc_, false);
+      auto new_root = std::make_unique<Node>(alloc_);
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
@@ -1799,7 +1797,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     Node *curr = new_tree.root_.get();
     if (new_tree.root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(new_tree.alloc_, false);
+      auto new_root = std::make_unique<Node>(new_tree.alloc_);
       new_tree.root_->index_ = 0;
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
@@ -1878,7 +1876,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     Node *curr = new_tree.root_.get();
     if (new_tree.root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(new_tree.alloc_, false);
+      auto new_root = std::make_unique<Node>(new_tree.alloc_);
       new_tree.root_->index_ = 0;
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
@@ -1942,7 +1940,6 @@ split(
     BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
     T &&raw_value) requires std::is_constructible_v<V, std::remove_cvref_t<T>> {
   using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
-  using Node = Tree::node_type;
   using Proj = Tree::Proj;
   constexpr bool is_disk_ = Tree::is_disk_;
 

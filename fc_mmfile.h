@@ -183,9 +183,6 @@ private:
 
 public:
   void resize(std::size_t new_size) {
-    if (new_size < 0) {
-      throw std::invalid_argument("new size < 0");
-    }
     if (!data_) {
       throw std::runtime_error("file is closed\n");
     }
