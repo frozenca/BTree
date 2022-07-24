@@ -1370,7 +1370,7 @@ protected:
 private:
   static constexpr attr_t bulk_erase_threshold = 30;
 
-public:
+protected:
   size_type erase_range(const_iterator_type first, const_iterator_type last) {
     if (first == cend()) {
       return 0;
@@ -1602,7 +1602,37 @@ public:
     }
   }
 
-public:
+  template <std::forward_iterator Iter>
+  requires std::is_constructible_v<V, std::iter_reference_t<Iter>>
+      size_type insert_range(Iter first, Iter last) {
+    auto [min_elem, max_elem] =
+        std::ranges::minmax_element(first, last, Comp{}, Proj{});
+    auto lb = find_lower_bound(*min_elem);
+    auto ub = find_upper_bound(*max_elem);
+    if (lb != ub) {
+      throw std::invalid_argument(
+          "Range can be inserted only if all of elements in the range can be "
+          "fit between two elements");
+    }
+
+    BTreeBase tree_mid{alloc_};
+    for (; first != last; ++first) {
+      tree_mid.insert(*first);
+    }
+    auto sz = tree_mid.size();
+    auto [tree_left, tree_right] = split_to_two_trees(lb, ub);
+    auto tree_leftmid = join(std::move(tree_left), std::move(tree_mid));
+    auto final_tree = join(std::move(tree_leftmid), std::move(tree_right));
+    this->swap(final_tree);
+    return sz;
+  }
+
+  template <std::ranges::forward_range R>
+  requires std::is_constructible_v<V, std::ranges::range_reference_t<R>>
+      size_type insert_range(R &&r) {
+    return insert_range(r.begin(), r.end());
+  }
+
   const_iterator_type erase(const_iterator_type iter) {
     if (iter == cend()) {
       throw std::invalid_argument("attempt to erase cend()");
@@ -1619,6 +1649,14 @@ public:
     } else {
       return erase_lb(root_.get(), key);
     }
+  }
+
+  size_type erase_range(const K &a, const K &b) {
+    if (Comp{}(b, a)) {
+      throw std::invalid_argument("b < a in erase_range()");
+    }
+    return erase_range(const_iterator_type(find_lower_bound(a)),
+                       const_iterator_type(find_upper_bound(b)));
   }
 
   template <typename Pred> size_type erase_if(Pred pred) {

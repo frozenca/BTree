@@ -226,4 +226,20 @@ int main() {
     }
     std::cout << "OK\n";
   }
+  {
+    std::cout << "Range insert test\n";
+    fc::BTreeSet<int> btree;
+    btree.insert(1);
+    btree.insert(10);
+
+    std::vector<int> v{2, 5, 4, 3, 7, 6, 6, 6, 2, 8, 8, 9};
+    btree.insert_range(std::move(v));
+
+    for (int i = 1; i < 10; ++i) {
+      if (!btree.contains(i)) {
+        std::cout << "Range insert failed\n";
+      }
+    }
+    std::cout << "OK\n";
+  }
 }
