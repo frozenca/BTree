@@ -1726,6 +1726,7 @@ public:
     }
     if (tree_code != begin_code) {
       std::cerr << "Tree deserialization: begin code is invalid\n";
+      is.clear(std::ios_base::failbit);
       return is;
     }
 
@@ -1736,6 +1737,7 @@ public:
     }
     if (static_cast<std::size_t>(tree_height) > max_possible_height) {
       std::cerr << "Tree deserialization: height is invalid\n";
+      is.clear(std::ios_base::failbit);
       return is;
     }
 
@@ -1753,6 +1755,7 @@ public:
     if (tree_code != end_code) {
       std::cerr << "Tree deserialization: end code is invalid\n";
       tree.clear();
+      is.clear(std::ios_base::failbit);
       return is;
     }
     tree.set_begin();
@@ -1775,6 +1778,7 @@ protected:
         (node != root_.get() && node->num_keys_ < Fanout - 1) ||
         node->num_keys_ < 0) {
       std::cerr << "Tree deserialization: nkeys is invalid\n";
+      is.clear(std::ios_base::failbit);
       return false;
     }
     if (!is.read(reinterpret_cast<char *>(node->keys_.data()),
