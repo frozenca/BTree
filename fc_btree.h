@@ -109,9 +109,15 @@ template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc, typename T>
 std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>,
           BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>>
-split(
-    BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
-    T &&raw_value) requires std::is_constructible_v<V, std::remove_cvref_t<T>>;
+split(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
+      T &&raw_key) requires std::is_constructible_v<K, std::remove_cvref_t<T>>;
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc, typename T>
+std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>,
+          BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>>
+split(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree, T &&raw_key1,
+      T &&raw_key2) requires std::is_constructible_v<K, std::remove_cvref_t<T>>;
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc>
@@ -1510,7 +1516,7 @@ public:
     return get_order(iter);
   }
 
-  attr_t count(const K &key) const requires (AllowDup) {
+  attr_t count(const K &key) const requires(AllowDup) {
     auto first = find_lower_bound(key);
     auto last = find_upper_bound(key);
     attr_t first_order = get_order(first);
@@ -2033,9 +2039,17 @@ public:
             bool AllowDup_, typename Alloc_, typename T>
   friend std::pair<BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>,
                    BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>>
+  split(
+      BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_> &&tree,
+      T &&raw_key) requires std::is_constructible_v<K_, std::remove_cvref_t<T>>;
+
+  template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
+            bool AllowDup_, typename Alloc_, typename T>
+  friend std::pair<BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>,
+                   BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>>
   split(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_> &&tree,
-        T &&raw_value) requires
-      std::is_constructible_v<V_, std::remove_cvref_t<T>>;
+        T &&raw_key1, T &&raw_key2) requires
+      std::is_constructible_v<K_, std::remove_cvref_t<T>>;
 };
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
@@ -2228,9 +2242,9 @@ template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc, typename T>
 std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>,
           BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>>
-split(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
-      T &&raw_value) requires(std::is_constructible_v<V,
-                                                      std::remove_cvref_t<T>>) {
+split(
+    BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
+    T &&raw_key) requires(std::is_constructible_v<K, std::remove_cvref_t<T>>) {
   using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
   if (tree.empty()) {
     Tree tree_left(tree.alloc_);
@@ -2238,9 +2252,32 @@ split(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
     return {std::move(tree_left), std::move(tree_right)};
   }
 
-  V mid_value{std::forward<T>(raw_value)};
-  return tree.split_to_two_trees(tree.find_lower_bound(mid_value, false),
-                                 tree.find_upper_bound(mid_value, false));
+  K mid_key{std::forward<T>(raw_key)};
+  return tree.split_to_two_trees(tree.find_lower_bound(mid_key, false),
+                                 tree.find_upper_bound(mid_key, false));
+}
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc, typename T>
+std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>,
+          BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>>
+split(
+    BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree, T &&raw_key1,
+    T &&raw_key2) requires(std::is_constructible_v<K, std::remove_cvref_t<T>>) {
+  using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
+  if (tree.empty()) {
+    Tree tree_left(tree.alloc_);
+    Tree tree_right(tree.alloc_);
+    return {std::move(tree_left), std::move(tree_right)};
+  }
+
+  K key1{std::forward<T>(raw_key1)};
+  K key2{std::forward<T>(raw_key2)};
+  if (Comp{}(key2, key1)) {
+    throw std::invalid_argument("split() key order is invalid\n");
+  }
+  return tree.split_to_two_trees(tree.find_lower_bound(key1, false),
+                                 tree.find_upper_bound(key2, false));
 }
 
 template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,

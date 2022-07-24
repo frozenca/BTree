@@ -214,6 +214,18 @@ int main() {
     std::cout << "OK\n";
   }
   {
+    std::cout << "Three arguments split test\n";
+    fc::BTreeSet<int> tree1;
+    for (int i = 0; i < 100; ++i) {
+      tree1.insert(i);
+    }
+    auto [tree2, tree3] = fc::split(std::move(tree1), 10, 80);
+    if (tree2.size() != 10 || tree3.size() != 19) {
+      std::cout << "Split fail\n";
+    }
+    std::cout << "OK\n";
+  }
+  {
     std::cout << "Multiset erase test\n";
     fc::BTreeMultiSet<int> tree1;
     tree1.insert(0);

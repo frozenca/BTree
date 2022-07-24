@@ -101,7 +101,9 @@ Other than regular operations supported by ```std::set``` and its friends (```lo
 
 ```frozenca::join(Tree&& tree1, value_type val, Tree&& tree2)``` : Joins two trees to a single tree. The largest key in ```tree1``` should be less than or equal to the key of ```val``` and the smallest key in ```tree2``` should be greater than or equal to the key of ```val```. Time complexity: ```O(1 + diff_height)```
 
-```frozenca::split(Tree&& tree, value_type val)``` : Splits a tree to two trees, so that the first tree contains keys less than the key of ```val```, and the second tree contains keys greater than the key of ```val```. Time complexity: ```O(log n)```
+```frozenca::split(Tree&& tree, key_type key)``` : Splits a tree to two trees, so that the first tree contains keys less than ```key```, and the second tree contains keys greater than ```key```. Time complexity: ```O(log n)```
+
+```frozenca::split(Tree&& tree, key_type key1, key_type key2)``` : Splits a tree to two trees, so that the first tree contains keys less than ```key1```, and the second tree contains keys greater than ```key2```. ```key2``` must be greater than or equal to ```key1```. Time complexity: ```O(log n)```
 
 ## Iterators
 STL compatible iterators are fully supported. (both ```const``` and non-```const```) However, unlike ```std::set``` and its friends, all insert and erase operations can invalidate iterators. This is because ```std::set``` and its friends are node-based containers where a single node can only have a single key, but a node in B-Trees can have multiple keys.
