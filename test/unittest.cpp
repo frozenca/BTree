@@ -217,7 +217,7 @@ int main() {
     std::cout << "Multiset erase test\n";
     fc::BTreeMultiSet<int> tree1;
     tree1.insert(0);
-    for (int i = 0; i < 100'000; ++i) {
+    for (int i = 0; i < 100; ++i) {
       tree1.insert(1);
     }
     tree1.insert(2);
@@ -257,6 +257,22 @@ int main() {
       if (!btree.contains(i)) {
         std::cout << "Range insert failed\n";
       }
+    }
+    std::cout << "OK\n";
+  }
+  {
+    std::cout << "count() test\n";
+    fc::BTreeSet<int> btree;
+    btree.insert(1);
+    btree.insert(1);
+    if (btree.count(1) != 1 || btree.count(0) != 0 || btree.count(2) != 0) {
+      std::cout << "count() failed\n";
+    }
+    fc::BTreeMultiSet<int> btree2;
+    btree2.insert(1);
+    btree2.insert(1);
+    if (btree2.count(1) != 2 || btree2.count(0) != 0 || btree2.count(2) != 0) {
+      std::cout << "count() failed\n";
     }
     std::cout << "OK\n";
   }

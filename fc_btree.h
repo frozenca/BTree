@@ -1510,6 +1510,14 @@ public:
     return get_order(iter);
   }
 
+  attr_t count(const K &key) const {
+    auto first = find_lower_bound(key);
+    auto last = find_upper_bound(key);
+    attr_t first_order = get_order(first);
+    attr_t last_order = (last == cend()) ? root_->size_ : get_order(last);
+    return last_order - first_order;
+  }
+
 protected:
   template <typename T>
   std::conditional_t<AllowDup, iterator_type, std::pair<iterator_type, bool>>
