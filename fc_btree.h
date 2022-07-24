@@ -267,17 +267,6 @@ requires(Fanout >= 2) class BTreeBase {
     }
   };
 
-  struct BTreeConstRefIterTraits {
-    using difference_type = attr_t;
-    using value_type = V;
-    using pointer = V *;
-    using reference = const V &;
-    using iterator_category = std::bidirectional_iterator_tag;
-    using iterator_concept = iterator_category;
-
-    static reference make_ref(const value_type &val) noexcept { return val; }
-  };
-
   template <typename IterTraits> struct BTreeIterator {
     using difference_type = IterTraits::difference_type;
     using value_type = IterTraits::value_type;
@@ -424,9 +413,7 @@ public:
   using nonconst_iterator_type = BTreeIterator<BTreeNonConstIterTraits>;
   using iterator_type = BTreeIterator<
       std::conditional_t<is_set_, BTreeConstIterTraits, BTreeRefIterTraits>>;
-  using const_iterator_type =
-      BTreeIterator<std::conditional_t<is_set_, BTreeConstIterTraits,
-                                       BTreeConstRefIterTraits>>;
+  using const_iterator_type = BTreeIterator<BTreeConstIterTraits>;
   using reverse_iterator_type = std::reverse_iterator<iterator_type>;
   using const_reverse_iterator_type =
       std::reverse_iterator<const_iterator_type>;
