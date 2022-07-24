@@ -50,27 +50,30 @@ int main() {
   }
 
   {
-    std::cout << "std:initializer_list test\n";
+    std::cout << "std::initializer_list test\n";
 
     fc::BTreeSet<int> btree{1, 4, 3, 2, 3, 3, 6, 5, 8};
-    for (auto num : btree) {
-      std::cout << num << ' ';
+    if (btree.size() == 7) {
+      std::cout << "OK\n";
+    } else {
+      std::cout << "std::initializer_list test failed\n";
     }
-    std::cout << '\n';
   }
   {
     std::cout << "Multiset test\n";
 
     fc::BTreeMultiSet<int> btree{1, 4, 3, 2, 3, 3, 6, 5, 8};
-    for (auto num : btree) {
-      std::cout << num << ' ';
+    if (btree.size() == 9) {
+      std::cout << "OK\n";
+    } else {
+      std::cout << "Multiset test failed\n";
     }
-    std::cout << '\n';
     btree.erase(3);
-    for (auto num : btree) {
-      std::cout << num << ' ';
+    if (btree.size() == 6) {
+      std::cout << "OK\n";
+    } else {
+      std::cout << "Multiset test failed\n";
     }
-    std::cout << '\n';
   }
   {
     std::cout << "Order statistic test\n";
@@ -104,17 +107,20 @@ int main() {
     for (int i = 0; i < n; ++i) {
       btree.insert(i);
     }
-    for (auto num : btree.enumerate(20, 30)) {
-      std::cout << num << ' ';
+    auto rg = btree.enumerate(20, 30);
+    if (std::ranges::distance(rg.begin(), rg.end()) == 11) {
+      std::cout << "OK\n";
+    } else {
+      std::cout << "Enumerate failed\n";
     }
-    std::cout << '\n';
 
     std::cout << "erase_if test\n";
     btree.erase_if([](auto n) { return n >= 20 && n <= 90; });
-    for (auto num : btree) {
-      std::cout << num << ' ';
+    if (btree.size() == 29) {
+      std::cout << "OK\n";
+    } else {
+      std::cout << "erase_if failed\n";
     }
-    std::cout << '\n';
   }
   {
     std::cout << "BTreeMap test\n";
@@ -124,22 +130,19 @@ int main() {
     btree["a"] = 6;
     btree["bbb"] = 9;
     btree["asdf"] = 8;
-    for (const auto &[k, v] : btree) {
-      std::cout << k << ' ' << v << '\n';
-    }
-    std::cout << '\n';
-
     btree["asdf"] = 333;
-    for (const auto &[k, v] : btree) {
-      std::cout << k << ' ' << v << '\n';
+    if (btree["asdf"] == 333) {
+      std::cout << "OK\n";
+    } else {
+      std::cout << "operator[] failed\n";
     }
-    std::cout << '\n';
 
     btree.emplace("asdfgh", 200);
-    for (const auto &[k, v] : btree) {
-      std::cout << k << ' ' << v << '\n';
+    if (btree["asdfgh"] == 200) {
+      std::cout << "OK\n";
+    } else {
+      std::cout << "emplace() failed\n";
     }
-    std::cout << '\n';
   }
   {
     std::cout << "join/split test\n";
@@ -233,6 +236,21 @@ int main() {
     btree.insert(10);
 
     std::vector<int> v{2, 5, 4, 3, 7, 6, 6, 6, 2, 8, 8, 9};
+    btree.insert_range(std::move(v));
+
+    for (int i = 1; i < 10; ++i) {
+      if (!btree.contains(i)) {
+        std::cout << "Range insert failed\n";
+      }
+    }
+    std::cout << "OK\n";
+  }
+  {
+    fc::BTreeSet<int> btree;
+    btree.insert(1);
+    btree.insert(10);
+
+    std::vector<int> v{2, 5, 4, 3, 7, 6, 6, 6, 2, 8, 8, 9, 10};
     btree.insert_range(std::move(v));
 
     for (int i = 1; i < 10; ++i) {

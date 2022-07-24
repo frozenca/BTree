@@ -1589,11 +1589,13 @@ public:
         return iterator_type(x, i)->second;
       } else if (x->is_leaf()) {
         V val{std::move(key), {}};
-        return insert_leaf(x, i, std::forward<V>(val))->second;
+        return insert_leaf(x, i, std::move(val))->second;
       } else {
         if (x->children_[i]->is_full()) {
           split_child(x->children_[i].get());
-          if (Comp{}(Proj{}(x->keys_[i]), key)) {
+          if (key == Proj{}(x->keys_[i])) {
+            return iterator_type(x, i)->second;
+          } else if (Comp{}(Proj{}(x->keys_[i]), key)) {
             ++i;
           }
         }
@@ -1610,21 +1612,31 @@ public:
     auto lb = find_lower_bound(*min_elem);
     auto ub = find_upper_bound(*max_elem);
     if (lb != ub) {
-      throw std::invalid_argument(
-          "Range can be inserted only if all of elements in the range can be "
-          "fit between two elements");
+      size_type sz = 0;
+      for (; first != last; ++first) {
+        if constexpr (AllowDup) {
+          insert(*first);
+          sz++;
+        } else {
+          auto [_, inserted] = insert(*first);
+          if (inserted) {
+            sz++;
+          }
+        }
+      }
+      return sz;
+    } else {
+      BTreeBase tree_mid{alloc_};
+      for (; first != last; ++first) {
+        tree_mid.insert(*first);
+      }
+      auto sz = tree_mid.size();
+      auto [tree_left, tree_right] = split_to_two_trees(lb, ub);
+      auto tree_leftmid = join(std::move(tree_left), std::move(tree_mid));
+      auto final_tree = join(std::move(tree_leftmid), std::move(tree_right));
+      this->swap(final_tree);
+      return sz;
     }
-
-    BTreeBase tree_mid{alloc_};
-    for (; first != last; ++first) {
-      tree_mid.insert(*first);
-    }
-    auto sz = tree_mid.size();
-    auto [tree_left, tree_right] = split_to_two_trees(lb, ub);
-    auto tree_leftmid = join(std::move(tree_left), std::move(tree_mid));
-    auto final_tree = join(std::move(tree_leftmid), std::move(tree_right));
-    this->swap(final_tree);
-    return sz;
   }
 
   template <std::ranges::forward_range R>
