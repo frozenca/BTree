@@ -168,7 +168,10 @@ int main() {
         std::cout << "Split failed\n";
       }
     }
-    for (int i = 200; i < 300; ++i) {
+    if (btree5.contains(200)) {
+      std::cout << "Split failed\n";
+    }
+    for (int i = 201; i < 300; ++i) {
       if (!btree5.contains(i)) {
         std::cout << "Split failed\n";
       }
