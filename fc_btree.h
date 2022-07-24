@@ -52,6 +52,30 @@ template <typename T, typename U> struct TreePairRef<BTreePair<T, U>> {
 
 template <typename TreePair> using PairRefType = TreePairRef<TreePair>::type;
 
+template <typename T, typename U>
+bool operator==(const BTreePair<T, U> &lhs,
+                const PairRefType<BTreePair<T, U>> &rhs) noexcept {
+  return lhs.first == rhs.first && lhs.second == rhs.second;
+}
+
+template <typename T, typename U>
+bool operator!=(const BTreePair<T, U> &lhs,
+                const PairRefType<BTreePair<T, U>> &rhs) noexcept {
+  return !(lhs == rhs);
+}
+
+template <typename T, typename U>
+bool operator==(const PairRefType<BTreePair<T, U>> &lhs,
+                const BTreePair<T, U> &rhs) noexcept {
+  return rhs == lhs;
+}
+
+template <typename T, typename U>
+bool operator!=(const PairRefType<BTreePair<T, U>> &lhs,
+                const BTreePair<T, U> &rhs) noexcept {
+  return rhs != lhs;
+}
+
 template <typename V> struct Projection {
   const auto &operator()(const V &value) const noexcept { return value.first; }
 };
@@ -247,13 +271,11 @@ requires(Fanout >= 2) class BTreeBase {
     using difference_type = attr_t;
     using value_type = V;
     using pointer = V *;
-    using reference = const PairRefType<V>;
+    using reference = const V &;
     using iterator_category = std::bidirectional_iterator_tag;
     using iterator_concept = iterator_category;
 
-    static reference make_ref(value_type &val) noexcept {
-      return {std::cref(val.first), std::ref(val.second)};
-    }
+    static reference make_ref(const value_type &val) noexcept { return val; }
   };
 
   template <typename IterTraits> struct BTreeIterator {
@@ -855,8 +877,7 @@ protected:
                         std::ranges::lower_bound(x->keys_.begin(),
                                                  x->keys_.begin() + x->nkeys(),
                                                  key, Comp{}, Proj{}));
-      if (i < x->nkeys() &&
-          Proj{}(key) == Proj{}(x->keys_[i])) { // equal? key found
+      if (i < x->nkeys() && key == Proj{}(x->keys_[i])) { // equal? key found
         return const_iterator_type(x, i);
       } else if (x->is_leaf()) { // no child, key is not in the tree
         return cend();
@@ -1106,7 +1127,7 @@ protected:
   insert_leaf(Node *node, attr_t i,
               T &&value) requires std::is_same_v<std::remove_cvref_t<T>, V> {
     assert(node && node->is_leaf() && !node->is_full());
-    bool update_begin = (empty() || Comp{}(Proj{}(value), ProjIter{}(*begin_)));
+    bool update_begin = (empty() || Comp{}(Proj{}(value), Proj{}(*begin_)));
 
     if constexpr (is_disk_) {
       std::memmove(node->keys_.data() + i + 1, node->keys_.data() + i,
@@ -1186,7 +1207,7 @@ protected:
   iterator_type erase_leaf(Node *node, attr_t i) {
     assert(node && i >= 0 && i < node->nkeys() && node->is_leaf() &&
            !node->has_minimal_keys());
-    bool update_begin = (begin_ == iterator_type(node, i));
+    bool update_begin = (begin_ == const_iterator_type(node, i));
     if constexpr (is_disk_) {
       std::memmove(node->keys_.data() + i, node->keys_.data() + i + 1,
                    (node->num_keys_ - (i + 1)) * sizeof(V));
@@ -1269,7 +1290,8 @@ protected:
     }
   }
 
-  iterator_type erase_hint(const V &value, std::vector<attr_t> &hints) {
+  iterator_type erase_hint([[maybe_unused]] const V &value,
+                           std::vector<attr_t> &hints) {
     auto x = root_.get();
     while (true) {
       auto i = hints.back();
@@ -1548,9 +1570,9 @@ public:
   }
 
 public:
-  iterator_type erase(iterator_type iter) {
-    if (iter == end()) {
-      throw std::invalid_argument("attempt to erase end()");
+  const_iterator_type erase(const_iterator_type iter) {
+    if (iter == cend()) {
+      throw std::invalid_argument("attempt to erase cend()");
     }
     auto node = iter.node_;
     std::vector<attr_t> hints;
