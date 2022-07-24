@@ -103,6 +103,9 @@ Other than regular operations supported by ```std::set``` and its friends (```lo
 
 ```frozenca::split(Tree&& tree, value_type val)``` : Splits a tree to two trees, so that the first tree contains keys less than the key of ```val```, and the second tree contains keys greater than the key of ```val```. Time complexity: ```O(log n)```
 
+## Iterators
+STL compatible iterators are fully supported. (both ```const``` and non-```const```) However, unlike ```std::set``` and its friends, all insert and erase operations can invalidate iterators. This is because ```std::set``` and its friends are node-based containers where a single node can only have a single key, but a node in B-Trees can have multiple keys.
+
 ## Concurrency
 
 Currently, thread safety is not guaranteed. Lock-free support is the first TODO, but contributions are welcome if you're interested.
