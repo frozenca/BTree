@@ -64,29 +64,28 @@ template <typename V> struct ProjectionIter {
   }
 };
 
-template <Containable K, typename V, attr_t Fanout, attr_t FanoutLeaf,
-          typename Comp, bool AllowDup, typename Alloc>
-requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase;
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc>
+requires(Fanout >= 2) class BTreeBase;
 
-template <Containable K, typename V, attr_t Fanout, attr_t FanoutLeaf,
-          typename Comp, bool AllowDup, typename Alloc, typename T>
-BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> join(
-    BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree_left,
-    T &&raw_value,
-    BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&
-        tree_right) requires std::is_constructible_v<V, std::remove_cvref_t<T>>;
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc, typename T>
+BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>
+join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
+     BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_right) requires
+    std::is_constructible_v<V, std::remove_cvref_t<T>>;
 
-template <Containable K, typename V, attr_t Fanout, attr_t FanoutLeaf,
-          typename Comp, bool AllowDup, typename Alloc, typename T>
-std::pair<BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>,
-          BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>>
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc, typename T>
+std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>,
+          BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>>
 split(
-    BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree,
+    BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
     T &&raw_value) requires std::is_constructible_v<V, std::remove_cvref_t<T>>;
 
-template <Containable K, typename V, attr_t Fanout, attr_t FanoutLeaf,
-          typename Comp, bool AllowDup, typename Alloc>
-requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc>
+requires(Fanout >= 2) class BTreeBase {
   static_assert(std::is_same_v<typename Alloc::value_type, V>,
                 "Allocator value type is not V");
 
@@ -94,9 +93,6 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
   static constexpr bool is_set_ = std::is_same_v<K, V>;
 
   static constexpr bool is_disk_ = DiskAllocable<V>;
-  static_assert(
-      !is_disk_ || (Fanout == FanoutLeaf),
-      "Fanout customization for leaves is not allowed for disk B-trees");
 
   static constexpr auto disk_max_nkeys =
       static_cast<std::size_t>(2 * Fanout - 1);
@@ -129,7 +125,7 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
 
     explicit Node(Alloc &alloc, bool is_leaf = true) requires(!is_disk_)
         : alloc_{alloc}, keys_{alloc_} {
-      keys_.reserve(2 * (is_leaf ? FanoutLeaf : Fanout) - 1);
+      keys_.reserve(2 * Fanout - 1);
     }
 
     ~Node() {
@@ -149,7 +145,7 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
       size_ = other.size_;
       if (!other.is_leaf()) {
         assert(is_leaf());
-        children_.reserve(other.fanout() * 2);
+        children_.reserve(Fanout * 2);
         children_.resize(other.children_.size());
         for (attr_t i = 0; i < std::ssize(other.children_); ++i) {
           children_[i] =
@@ -162,25 +158,13 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
       }
     }
 
-    [[nodiscard]] attr_t fanout() const noexcept {
-      if constexpr (is_disk_) {
-        return Fanout;
-      } else {
-        if (is_leaf()) {
-          return FanoutLeaf;
-        } else {
-          return Fanout;
-        }
-      }
-    }
-
     [[nodiscard]] bool is_leaf() const noexcept { return children_.empty(); }
 
     [[nodiscard]] bool is_full() const noexcept {
       if constexpr (is_disk_) {
         return num_keys_ == 2 * Fanout - 1;
       } else {
-        return std::ssize(keys_) == 2 * fanout() - 1;
+        return std::ssize(keys_) == 2 * Fanout - 1;
       }
     }
 
@@ -188,7 +172,7 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
       if constexpr (is_disk_) {
         return num_keys_ > Fanout - 1;
       } else {
-        return std::ssize(keys_) > fanout() - 1;
+        return std::ssize(keys_) > Fanout - 1;
       }
     }
 
@@ -196,7 +180,7 @@ requires(Fanout >= 2 && FanoutLeaf >= 2) class BTreeBase {
       if constexpr (is_disk_) {
         return parent_ && num_keys_ == Fanout - 1;
       } else {
-        return parent_ && std::ssize(keys_) == fanout() - 1;
+        return parent_ && std::ssize(keys_) == Fanout - 1;
       }
     }
 
@@ -448,7 +432,7 @@ public:
   BTreeBase(const BTreeBase &other) {
     alloc_ = other.alloc_;
     if (other.root_) {
-      root_ = std::make_unique<Node>(alloc_, other.root_.is_leaf());
+      root_ = std::make_unique<Node>(alloc_, other.root_->is_leaf());
       root_->clone(*(other.root_));
       root_->parent_ = nullptr;
     }
@@ -473,8 +457,8 @@ public:
     assert(node);
 
     // invariant: except root, t - 1 <= #(key) <= 2 * t - 1
-    assert(!node->parent_ || (node->nkeys() >= node->fanout() - 1 &&
-                              node->nkeys() <= 2 * node->fanout() - 1));
+    assert(!node->parent_ ||
+           (node->nkeys() >= Fanout - 1 && node->nkeys() <= 2 * Fanout - 1));
 
     // invariant: keys are sorted
     assert(std::ranges::is_sorted(node->keys_.begin(),
@@ -483,9 +467,9 @@ public:
 
     // invariant: for internal nodes, t <= #(child) == (#(key) + 1)) <= 2 * t
     assert(!node->parent_ || node->is_leaf() ||
-           (std::ssize(node->children_) >= node->fanout() &&
+           (std::ssize(node->children_) >= Fanout &&
             std::ssize(node->children_) == node->nkeys() + 1 &&
-            std::ssize(node->children_) <= 2 * node->fanout()));
+            std::ssize(node->children_) <= 2 * Fanout));
 
     // index check
     assert(!node->parent_ ||
@@ -693,7 +677,7 @@ protected:
     assert(node && parent && parent->children_[node->index_].get() == node &&
            node->index_ + 1 < std::ssize(parent->children_));
     auto sibling = parent->children_[node->index_ + 1].get();
-    assert(sibling->nkeys() >= (node->fanout() - 1) + n);
+    assert(sibling->nkeys() >= (Fanout - 1) + n);
 
     if constexpr (is_disk_) {
       // brings one key from parent
@@ -801,7 +785,7 @@ protected:
     assert(node && parent && parent->children_[node->index_].get() == node &&
            node->index_ - 1 >= 0);
     auto sibling = parent->children_[node->index_ - 1].get();
-    assert(sibling->nkeys() >= (node->fanout() - 1) + n);
+    assert(sibling->nkeys() >= (Fanout - 1) + n);
 
     if constexpr (is_disk_) {
       std::memcpy(node->keys_.data() + node->num_keys_,
@@ -978,29 +962,27 @@ protected:
     z->index_ = i + 1;
     z->height_ = y->height_;
 
-    auto fanout = y->fanout();
-
     // bring right t keys from y
     if constexpr (is_disk_) {
       std::memcpy(z->keys_.data(), y->keys_.data() + Fanout,
                   (y->num_keys_ - Fanout) * sizeof(V));
       z->num_keys_ = y->num_keys_ - Fanout;
     } else {
-      std::ranges::move(y->keys_ | std::views::drop(fanout),
+      std::ranges::move(y->keys_ | std::views::drop(Fanout),
                         std::back_inserter(z->keys_));
     }
     auto z_size = z->nkeys();
     if (!y->is_leaf()) {
-      z->children_.reserve(2 * fanout);
+      z->children_.reserve(2 * Fanout);
       // bring right half children from y
-      std::ranges::move(y->children_ | std::views::drop(fanout),
+      std::ranges::move(y->children_ | std::views::drop(Fanout),
                         std::back_inserter(z->children_));
       for (auto &&child : z->children_) {
         child->parent_ = z.get();
-        child->index_ -= fanout;
+        child->index_ -= Fanout;
         z_size += child->size_;
       }
-      y->children_.resize(fanout);
+      y->children_.resize(Fanout);
     }
     z->size_ = z_size;
     y->size_ -= (z_size + 1);
@@ -1014,11 +996,11 @@ protected:
       std::memmove(x->keys_.data() + i + 1, x->keys_.data() + i,
                    (x->num_keys_ - i) * sizeof(V));
       x->num_keys_++;
-      x->keys_[i] = y->keys_[fanout - 1];
-      y->num_keys_ = fanout - 1;
+      x->keys_[i] = y->keys_[Fanout - 1];
+      y->num_keys_ = Fanout - 1;
     } else {
-      x->keys_.insert(x->keys_.begin() + i, std::move(y->keys_[fanout - 1]));
-      y->keys_.resize(fanout - 1);
+      x->keys_.insert(x->keys_.begin() + i, std::move(y->keys_[Fanout - 1]));
+      y->keys_.resize(Fanout - 1);
     }
   }
 
@@ -1030,7 +1012,7 @@ protected:
     assert(x && y == x->children_[i].get() && !x->is_leaf() && i >= 0 &&
            i + 1 < std::ssize(x->children_));
     auto sibling = x->children_[i + 1].get();
-    assert(y->nkeys() + sibling->nkeys() <= 2 * y->fanout() - 2);
+    assert(y->nkeys() + sibling->nkeys() <= 2 * Fanout - 2);
 
     auto immigrated_size = sibling->nkeys();
 
@@ -1090,34 +1072,32 @@ protected:
     if (left_side) {
       auto first = x->children_[0].get();
       auto second = x->children_[1].get();
-      auto fanout = first->fanout();
 
-      if (first->nkeys() + second->nkeys() <= 2 * fanout - 2) {
+      if (first->nkeys() + second->nkeys() <= 2 * Fanout - 2) {
         // just merge to one node
         merge_child(first);
-      } else if (first->nkeys() < fanout - 1) {
+      } else if (first->nkeys() < Fanout - 1) {
         // first borrows key from second
-        auto deficit = (fanout - 1 - first->nkeys());
+        auto deficit = (Fanout - 1 - first->nkeys());
 
         // this is mathematically true, otherwise
         // #(first.keys) + #(second.keys) < 2 * t - 2, so it should be merged
         // before
-        assert(second->nkeys() > deficit + (fanout - 1));
+        assert(second->nkeys() > deficit + (Fanout - 1));
         left_rotate_n(first, deficit);
       }
     } else {
       auto rfirst = x->children_.back().get();
       auto rsecond = x->children_[std::ssize(x->children_) - 2].get();
-      auto fanout = rfirst->fanout();
 
-      if (rfirst->nkeys() + rsecond->nkeys() <= 2 * fanout - 2) {
+      if (rfirst->nkeys() + rsecond->nkeys() <= 2 * Fanout - 2) {
         // just merge to one node
         merge_child(rsecond);
-      } else if (rfirst->nkeys() < fanout - 1) {
+      } else if (rfirst->nkeys() < Fanout - 1) {
         // rfirst borrows key from rsecond
-        auto deficit = (fanout - 1 - rfirst->nkeys());
+        auto deficit = (Fanout - 1 - rfirst->nkeys());
 
-        assert(rsecond->nkeys() > deficit + (fanout - 1));
+        assert(rsecond->nkeys() > deficit + (Fanout - 1));
         right_rotate_n(rfirst, deficit);
       }
     }
@@ -1339,7 +1319,7 @@ protected:
           promote_root_if_necessary();
           x = next;
           // i'th key of x is now t - 1'th key of x->children_[i]
-          hints.push_back(x->fanout() - 1);
+          hints.push_back(Fanout - 1);
         }
       } else {
         assert(!hints.empty());
@@ -1360,7 +1340,7 @@ protected:
             merge_child(next);
             promote_root_if_necessary();
             // x->children_[i] stuffs are shifted right by t
-            hints.back() += next->fanout();
+            hints.back() += Fanout;
           }
         }
         x = next;
@@ -1498,7 +1478,7 @@ protected:
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
-      new_root->children_.reserve(new_root->fanout() * 2);
+      new_root->children_.reserve(Fanout * 2);
       new_root->children_.push_back(std::move(root_));
       root_ = std::move(new_root);
       // and split
@@ -1537,7 +1517,7 @@ public:
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
-      new_root->children_.reserve(new_root->fanout() * 2);
+      new_root->children_.reserve(Fanout * 2);
       new_root->children_.push_back(std::move(root_));
       root_ = std::move(new_root);
       // and split
@@ -1768,36 +1748,31 @@ public:
     return true;
   }
 
-  template <Containable K_, typename V_, attr_t Fanout_, attr_t FanoutLeaf_,
-            typename Comp_, bool AllowDup_, typename Alloc_, typename T>
-  friend BTreeBase<K_, V_, Fanout_, FanoutLeaf_, Comp_, AllowDup_, Alloc_>
-  join(BTreeBase<K_, V_, Fanout_, FanoutLeaf_, Comp_, AllowDup_, Alloc_>
-           &&tree_left,
+  template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
+            bool AllowDup_, typename Alloc_, typename T>
+  friend BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>
+  join(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_> &&tree_left,
        T &&raw_value,
-       BTreeBase<K_, V_, Fanout_, FanoutLeaf_, Comp_, AllowDup_, Alloc_>
+       BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>
            &&tree_right) requires
       std::is_constructible_v<V_, std::remove_cvref_t<T>>;
 
-  template <Containable K_, typename V_, attr_t Fanout_, attr_t FanoutLeaf_,
-            typename Comp_, bool AllowDup_, typename Alloc_, typename T>
-  friend std::pair<
-      BTreeBase<K_, V_, Fanout_, FanoutLeaf_, Comp_, AllowDup_, Alloc_>,
-      BTreeBase<K_, V_, Fanout_, FanoutLeaf_, Comp_, AllowDup_, Alloc_>>
-  split(
-      BTreeBase<K_, V_, Fanout_, FanoutLeaf_, Comp_, AllowDup_, Alloc_> &&tree,
-      T &&raw_value) requires
+  template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
+            bool AllowDup_, typename Alloc_, typename T>
+  friend std::pair<BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>,
+                   BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_>>
+  split(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, Alloc_> &&tree,
+        T &&raw_value) requires
       std::is_constructible_v<V_, std::remove_cvref_t<T>>;
 };
 
-template <Containable K, typename V, attr_t Fanout, attr_t FanoutLeaf,
-          typename Comp, bool AllowDup, typename Alloc, typename T>
-BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>
-join(BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree_left,
-     T &&raw_value,
-     BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>
-         &&tree_right) requires
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc, typename T>
+BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>
+join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
+     BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_right) requires
     std::is_constructible_v<V, std::remove_cvref_t<T>> {
-  using Tree = BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>;
+  using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
   using Node = Tree::node_type;
   using Proj = Tree::Proj;
   constexpr bool is_disk_ = Tree::is_disk_;
@@ -1829,7 +1804,7 @@ join(BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree_left,
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
       new_root->height_ = new_tree.root_->height_ + 1;
-      new_root->children_.reserve(new_root->fanout() * 2);
+      new_root->children_.reserve(Fanout * 2);
       new_root->children_.push_back(std::move(new_tree.root_));
       new_tree.root_ = std::move(new_root);
       // and split
@@ -1861,7 +1836,7 @@ join(BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree_left,
         new_root->keys_.push_back(std::move(mid_value));
       }
 
-      new_root->children_.reserve(new_root->fanout() * 2);
+      new_root->children_.reserve(Fanout * 2);
 
       new_tree.root_->parent_ = new_root.get();
       new_tree.root_->index_ = 0;
@@ -1908,7 +1883,7 @@ join(BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree_left,
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
       new_root->height_ = new_tree.root_->height_ + 1;
-      new_root->children_.reserve(new_root->fanout() * 2);
+      new_root->children_.reserve(Fanout * 2);
       new_root->children_.push_back(std::move(new_tree.root_));
       new_tree.root_ = std::move(new_root);
       // and split
@@ -1959,14 +1934,14 @@ join(BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree_left,
   }
 }
 
-template <Containable K, typename V, attr_t Fanout, attr_t FanoutLeaf,
-          typename Comp, bool AllowDup, typename Alloc, typename T>
-std::pair<BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>,
-          BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>>
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, typename Alloc, typename T>
+std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>,
+          BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>>
 split(
-    BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc> &&tree,
+    BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree,
     T &&raw_value) requires std::is_constructible_v<V, std::remove_cvref_t<T>> {
-  using Tree = BTreeBase<K, V, Fanout, FanoutLeaf, Comp, AllowDup, Alloc>;
+  using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
   using Node = Tree::node_type;
   using Proj = Tree::Proj;
   constexpr bool is_disk_ = Tree::is_disk_;
@@ -2055,7 +2030,7 @@ split(
         }
         slroot->size_ += (i - 1);
 
-        slroot->children_.reserve(slroot->fanout() * 2);
+        slroot->children_.reserve(Fanout * 2);
 
         std::ranges::move(x->children_ | std::views::take(i),
                           std::back_inserter(slroot->children_));
@@ -2093,7 +2068,7 @@ split(
         }
         srroot->size_ += immigrants;
 
-        srroot->children_.reserve(srroot->fanout() * 2);
+        srroot->children_.reserve(Fanout * 2);
 
         std::ranges::move(x->children_ | std::views::drop(i + 1),
                           std::back_inserter(srroot->children_));
@@ -2131,24 +2106,23 @@ split(
   return {std::move(tree_left), std::move(tree_right)};
 }
 
-template <Containable K, attr_t t = 2, attr_t t_leaf = 2,
-          typename Comp = std::ranges::less, typename Alloc = std::allocator<K>>
-using BTreeSet = BTreeBase<K, K, t, t, Comp, false, Alloc>;
+template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,
+          typename Alloc = std::allocator<K>>
+using BTreeSet = BTreeBase<K, K, t, Comp, false, Alloc>;
 
-template <Containable K, attr_t t = 2, attr_t t_leaf = 2,
-          typename Comp = std::ranges::less, typename Alloc = std::allocator<K>>
-using BTreeMultiSet = BTreeBase<K, K, t, t, Comp, true, Alloc>;
+template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,
+          typename Alloc = std::allocator<K>>
+using BTreeMultiSet = BTreeBase<K, K, t, Comp, true, Alloc>;
 
-template <Containable K, Containable V, attr_t t = 2, attr_t t_leaf = 2,
+template <Containable K, Containable V, attr_t t = 2,
           typename Comp = std::ranges::less,
           typename Alloc = std::allocator<BTreePair<K, V>>>
-using BTreeMap = BTreeBase<K, BTreePair<K, V>, t, t, Comp, false, Alloc>;
+using BTreeMap = BTreeBase<K, BTreePair<K, V>, t, Comp, false, Alloc>;
 
-template <Containable K, Containable V, attr_t t = 2, attr_t t_leaf = 2,
+template <Containable K, Containable V, attr_t t = 2,
           typename Comp = std::ranges::less,
           typename Alloc = std::allocator<BTreePair<K, V>>>
-using BTreeMultiMap =
-    BTreeBase<K, BTreePair<K, V>, t, t, Comp, true, Alloc>;
+using BTreeMultiMap = BTreeBase<K, BTreePair<K, V>, t, Comp, true, Alloc>;
 
 } // namespace frozenca
 

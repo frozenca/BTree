@@ -8,15 +8,14 @@ namespace frozenca {
 
 template <DiskAllocable K, DiskAllocable V, attr_t t, typename Comp,
           bool AllowDup>
-class DiskBTreeBase : public BTreeBase<K, V, t, t, Comp, AllowDup,
-                                       AllocatorFixed<V, 2 * t - 1>> {
+class DiskBTreeBase
+    : public BTreeBase<K, V, t, Comp, AllowDup, AllocatorFixed<V, 2 * t - 1>> {
 private:
   MemoryMappedFile mm_file_;
   MemoryResourceFixed<V, 2 * t - 1> mem_res_;
 
 public:
-  using Base =
-      BTreeBase<K, V, t, t, Comp, AllowDup, AllocatorFixed<V, 2 * t - 1>>;
+  using Base = BTreeBase<K, V, t, Comp, AllowDup, AllocatorFixed<V, 2 * t - 1>>;
 
   explicit DiskBTreeBase(const MemoryMappedFile &mm_file)
       : mm_file_{mm_file}, mem_res_{reinterpret_cast<unsigned char *>(
