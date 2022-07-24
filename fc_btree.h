@@ -1362,7 +1362,7 @@ protected:
   }
 
 private:
-  static constexpr attr_t bulk_erase_threshold = 100;
+  static constexpr attr_t bulk_erase_threshold = 30;
 
 public:
   size_type erase_range(const_iterator_type first, const_iterator_type last) {
