@@ -85,6 +85,8 @@ It is recommended to users to choose a fanout parameter suitable to their usages
 
 Other than regular operations supported by ```std::set``` and its friends (```lower_bound()```, ```upper_bound()```, ```equal_range()``` and etc), the following operations are supported:
 
+```tree.count(const key_type& key)``` : Returns the number of elements in the tree for their key is equivalent to ```key```. Time complexity: ```O(log n)```
+
 ```tree.kth(std::ptrdiff_t k)``` : Returns the k-th element in the tree as 0-based index. Time complexity: ```O(log n)```
 
 ```tree.order(const_iterator_type iter)``` : Returns the rank of the element in the iterator in the tree as 0-based index. Time complexity: ```O(log n)```
