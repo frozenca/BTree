@@ -5,7 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 
 add_executable(demo test/perftest.cpp fc_disk_fixed_alloc.h fc_mmfile.h fc_btree.h fc_disk_btree.h)
 
-target_compile_options(demo PRIVATE -Wall -Wextra -Wpedantic -Werror)
 if(MSVC)
     target_compile_options(demo PRIVATE /W4 /WX /nologo /MDd /EHsc /std:c++latest /experimental:module)
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -20,4 +19,3 @@ else()
         add_compile_options(-O3)
     endif()
 endif()
-

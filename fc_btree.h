@@ -673,7 +673,8 @@ protected:
       sibling->size_ -= orphan_size;
 
       sibling->children_.front()->parent_ = node;
-      sibling->children_.front()->index_ = std::ssize(node->children_);
+      sibling->children_.front()->index_ =
+          static_cast<attr_t>(std::ssize(node->children_));
       node->children_.push_back(std::move(sibling->children_.front()));
       std::shift_left(sibling->children_.begin(), sibling->children_.end(), 1);
       sibling->children_.pop_back();
@@ -875,7 +876,7 @@ protected:
                                                  x->keys_.begin() + x->nkeys(),
                                                  key, Comp{}, Proj{}));
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) { // equal? key found
-        return const_iterator_type(x, i);
+        return const_iterator_type(x, static_cast<attr_t>(i));
       } else if (x->is_leaf()) { // no child, key is not in the tree
         return cend();
       } else { // search on child between range
@@ -1054,7 +1055,7 @@ protected:
 
     // bring children of child[i + 1]
     if (!y->is_leaf()) {
-      attr_t immigrant_index = std::ssize(y->children_);
+      attr_t immigrant_index = static_cast<attr_t>(std::ssize(y->children_));
       for (auto &&child : sibling->children_) {
         child->parent_ = y;
         child->index_ = immigrant_index++;
@@ -1194,9 +1195,10 @@ protected:
                                                  x->keys_.begin() + x->nkeys(),
                                                  Proj{}(key), Comp{}, Proj{}));
       if (i < x->nkeys() && Proj{}(key) == Proj{}(x->keys_[i])) {
-        return {iterator_type(x, i), false};
+        return {iterator_type(x, static_cast<attr_t>(i)), false};
       } else if (x->is_leaf()) {
-        return {insert_leaf(x, i, std::forward<T>(key)), true};
+        return {insert_leaf(x, static_cast<attr_t>(i), std::forward<T>(key)),
+                true};
       } else {
         if (x->children_[i]->is_full()) {
           split_child(x->children_[i].get());
@@ -1246,11 +1248,11 @@ protected:
         // key found
         assert(x->is_leaf() || i + 1 < std::ssize(x->children_));
         if (x->is_leaf()) {
-          erase_leaf(x, i);
+          erase_leaf(x, static_cast<attr_t>(i));
           return 1;
         } else if (x->children_[i]->can_take_key()) {
           // swap key with pred
-          nonconst_iterator_type iter(x, i);
+          nonconst_iterator_type iter(x, static_cast<attr_t>(i));
           auto pred = std::prev(iter);
           assert(pred.node_ == rightmost_leaf(x->children_[i].get()));
           std::iter_swap(pred, iter);
@@ -1258,7 +1260,7 @@ protected:
           x = x->children_[i].get();
         } else if (x->children_[i + 1]->can_take_key()) {
           // swap key with succ
-          nonconst_iterator_type iter(x, i);
+          nonconst_iterator_type iter(x, static_cast<attr_t>(i));
           auto succ = std::next(iter);
           assert(succ.node_ == leftmost_leaf(x->children_[i + 1].get()));
           std::iter_swap(succ, iter);
