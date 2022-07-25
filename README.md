@@ -83,7 +83,7 @@ It is recommended to users to choose a fanout parameter suitable to their usages
 
 ## Supported operations
 
-Other than regular operations supported by ```std::set``` and its friends (```lower_bound()```, ```upper_bound()```, ```equal_range()``` and etc), the following operations are supported. When ```n``` is the number of keys in the tree and ```t``` is the fanout, the time complexity of all written below ```O(log n)``` is precisely ```O((log_t n) * log_2(log_t n))```, which is approximately ```O(log n)```.
+Other than regular operations supported by ```std::set``` and its friends (```lower_bound()```, ```upper_bound()```, ```equal_range()``` and etc), the following operations are supported.
 
 ```tree.count(const key_type& key)``` : Returns the number of elements in the tree for their key is equivalent to ```key```. Time complexity: ```O(log n)```
 
