@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.16)
+project(demo)
+
+set(CMAKE_CXX_STANDARD 20)
+
+add_executable(demo test/perftest.cpp fc_disk_fixed_alloc.h fc_mmfile.h fc_btree.h fc_disk_btree.h)
+
+target_compile_options(demo PRIVATE -Wall -Wextra -Wpedantic -Werror)
+if(MSVC)
+    target_compile_options(demo PRIVATE /W4 /WX /nologo /MDd /EHsc /std:c++latest /experimental:module)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_compile_options(/Ox)
+    endif()
+else()
+    target_compile_options(demo PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_compile_options(-g)
+    elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_compile_options(-O3)
+    endif()
+endif()
+
