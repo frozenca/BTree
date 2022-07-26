@@ -133,6 +133,8 @@ requires(Fanout >= 2) class BTreeBase {
   static constexpr auto disk_max_nkeys =
       static_cast<std::size_t>(2 * Fanout - 1);
 
+  static constexpr bool use_linsearch_ = std::is_arithmetic_v<K> && (Fanout <= 256);
+
   struct Node {
     using keys_type = std::conditional_t<is_disk_, std::span<V, disk_max_nkeys>,
                                          std::vector<V, Alloc>>;
@@ -239,7 +241,7 @@ requires(Fanout >= 2) class BTreeBase {
       if constexpr (is_disk_) {
         return num_keys_;
       } else {
-        return std::ssize(keys_);
+        return static_cast<attr_t>(std::ssize(keys_));
       }
     }
   };
@@ -728,7 +730,7 @@ protected:
     if (!node->is_leaf()) {
       // brings n children from sibling
       attr_t orphan_size = 0;
-      attr_t immigrant_index = std::ssize(node->children_);
+      attr_t immigrant_index = static_cast<attr_t>(std::ssize(node->children_));
       for (auto &&immigrant : sibling->children_ | std::views::take(n)) {
         immigrant->parent_ = node;
         immigrant->index_ = immigrant_index++;
@@ -867,14 +869,35 @@ protected:
     }
   }
 
+  auto get_lb_location(const K &key, const V *first,
+                       const V *last) const noexcept {
+    auto lbcomp = [&key](const V &other) { return Comp{}(Proj{}(other), key); };
+    if constexpr (use_linsearch_) {
+      return std::distance(
+          first, std::ranges::find_if_not(first, last, lbcomp, Proj{}));
+    } else {
+      return std::distance(
+          first, std::ranges::lower_bound(first, last, key, Comp{}, Proj{}));
+    }
+  }
+
+  auto get_ub_location(const K &key, const V *first,
+                       const V *last) const noexcept {
+    auto ubcomp = [&key](const V &other) { return Comp{}(key, Proj{}(other)); };
+    if constexpr (use_linsearch_) {
+      return std::distance(first,
+                           std::ranges::find_if(first, last, ubcomp, Proj{}));
+    } else {
+      return std::distance(
+          first, std::ranges::upper_bound(first, last, key, Comp{}, Proj{}));
+    }
+  }
+
   const_iterator_type search(const K &key) const {
     auto x = root_.get();
     while (x) {
       auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::lower_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 key, Comp{}, Proj{}));
+          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) { // equal? key found
         return const_iterator_type(x, static_cast<attr_t>(i));
       } else if (x->is_leaf()) { // no child, key is not in the tree
@@ -890,12 +913,9 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::lower_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 key, Comp{}, Proj{}));
+          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
-        auto it = nonconst_iterator_type(x, i);
+        auto it = nonconst_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
           it.climb();
         }
@@ -911,12 +931,9 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::lower_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 key, Comp{}, Proj{}));
+          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
-        auto it = const_iterator_type(x, i);
+        auto it = const_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
           it.climb();
         }
@@ -932,12 +949,9 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::upper_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 key, Comp{}, Proj{}));
+          get_ub_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
-        auto it = nonconst_iterator_type(x, i);
+        auto it = nonconst_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
           it.climb();
         }
@@ -953,12 +967,9 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::upper_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 key, Comp{}, Proj{}));
+          get_ub_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
-        auto it = const_iterator_type(x, i);
+        auto it = const_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
           it.climb();
         }
@@ -1164,13 +1175,10 @@ protected:
       AllowDup &&std::is_same_v<std::remove_cvref_t<T>, V>) {
     auto x = root_.get();
     while (true) {
-      auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::upper_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 Proj{}(key), Comp{}, Proj{}));
+      auto i = get_ub_location(Proj{}(key), x->keys_.data(),
+                               x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
-        return insert_leaf(x, i, std::forward<T>(key));
+        return insert_leaf(x, static_cast<attr_t>(i), std::forward<T>(key));
       } else {
         if (x->children_[i]->is_full()) {
           split_child(x->children_[i].get());
@@ -1189,11 +1197,8 @@ protected:
                               std::is_same_v<std::remove_cvref_t<T>, V>) {
     auto x = root_.get();
     while (true) {
-      auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::lower_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 Proj{}(key), Comp{}, Proj{}));
+      auto i = get_lb_location(Proj{}(key), x->keys_.data(),
+                               x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && Proj{}(key) == Proj{}(x->keys_[i])) {
         return {iterator_type(x, static_cast<attr_t>(i)), false};
       } else if (x->is_leaf()) {
@@ -1202,7 +1207,9 @@ protected:
       } else {
         if (x->children_[i]->is_full()) {
           split_child(x->children_[i].get());
-          if (Comp{}(Proj{}(x->keys_[i]), Proj{}(key))) {
+          if (Proj{}(key) == Proj{}(x->keys_[i])) {
+            return {iterator_type(x, static_cast<attr_t>(i)), false};
+          } else if (Comp{}(Proj{}(x->keys_[i]), Proj{}(key))) {
             ++i;
           }
         }
@@ -1240,10 +1247,7 @@ protected:
   size_t erase_lb(Node *x, const K &key) requires(!AllowDup) {
     while (true) {
       auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::lower_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 key, Comp{}, Proj{}));
+          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) {
         // key found
         assert(x->is_leaf() || i + 1 < std::ssize(x->children_));
@@ -1320,7 +1324,8 @@ protected:
           auto curr = x;
           assert(curr->index_ == i);
           while (!curr->is_leaf()) {
-            hints.push_back(std::ssize(curr->children_) - 1);
+            hints.push_back(static_cast<attr_t>(std::ssize(curr->children_)) -
+                            1);
             curr = curr->children_.back().get();
           }
           hints.push_back(curr->nkeys() - 1);
@@ -1597,20 +1602,17 @@ public:
     auto x = root_.get();
     while (true) {
       auto i =
-          std::distance(x->keys_.begin(),
-                        std::ranges::lower_bound(x->keys_.begin(),
-                                                 x->keys_.begin() + x->nkeys(),
-                                                 key, Comp{}, Proj{}));
+          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) {
-        return iterator_type(x, i)->second;
+        return iterator_type(x, static_cast<attr_t>(i))->second;
       } else if (x->is_leaf()) {
         V val{std::move(key), {}};
-        return insert_leaf(x, i, std::move(val))->second;
+        return insert_leaf(x, static_cast<attr_t>(i), std::move(val))->second;
       } else {
         if (x->children_[i]->is_full()) {
           split_child(x->children_[i].get());
           if (key == Proj{}(x->keys_[i])) {
-            return iterator_type(x, i)->second;
+            return iterator_type(x, static_cast<attr_t>(i))->second;
           } else if (Comp{}(Proj{}(x->keys_[i]), key)) {
             ++i;
           }
@@ -2165,7 +2167,8 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
       }
 
       tree_right.root_->parent_ = parent;
-      tree_right.root_->index_ = std::ssize(parent->children_);
+      tree_right.root_->index_ =
+          static_cast<attr_t>(std::ssize(parent->children_));
       parent->children_.push_back(std::move(tree_right.root_));
 
       while (parent) {
