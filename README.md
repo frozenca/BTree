@@ -130,87 +130,45 @@ Serialization/deserialization of B-Trees via byte streams using ```operator<<```
 
 ## Performance
 
-Using a performance test code similar with ```test/perftest.cpp```, that inserts/retrieves/erases 1 million ```std::int64_t``` in random order, I see the following results in my machine (gcc 11.2, -O3, 30 times repeated per each target):
+Using a performance test code similar with ```test/perftest.cpp```, that inserts/retrieves/erases 1 million ```std::int64_t``` in random order, I see the following results in my machine (gcc 11.2, -O3, 30 times repeated per each target), compared to ```std::set``` and Google's B-Tree implementation(https://code.google.com/archive/p/cpp-btree/):
 
 ```
 Balanced tree test
 Warming up complete...
 frozenca::BTreeSet test (fanout 64 - default)
-Time to insert 1000000 elements:
-Average : 184.774ms,
-Stdev   : 5.17072ms,
-Time to lookup 1000000 elements:
-Average : 213.172ms,
-Stdev   : 4.92304ms,
-Time to erase 1000000 elements:
-Average : 217.247ms,
-Stdev   : 5.47413ms,
+Time to insert 1000000 elements: Average : 184.774ms, Stdev   : 5.17072ms,
+Time to lookup 1000000 elements: Average : 213.172ms, Stdev   : 4.92304ms,
+Time to erase 1000000 elements: Average : 217.247ms, Stdev   : 5.47413ms,
 
 frozenca::DiskBTreeSet test (fanout 64 - default)
-Time to insert 1000000 elements:
-Average : 185.898ms,
-Stdev   : 9.86471ms,
-Time to lookup 1000000 elements:
-Average : 215.104ms,
-Stdev   : 4.29681ms,
-Time to erase 1000000 elements:
-Average : 224.128ms,
-Stdev   : 13.4679ms,
+Time to insert 1000000 elements: Average : 185.898ms, Stdev   : 9.86471ms,
+Time to lookup 1000000 elements: Average : 215.104ms, Stdev   : 4.29681ms,
+Time to erase 1000000 elements: Average : 224.128ms, Stdev   : 13.4679ms,
 
 frozenca::BTreeSet test (fanout 256)
-Time to insert 1000000 elements:
-Average : 270.972ms,
-Stdev   : 39.1409ms,
-Time to lookup 1000000 elements:
-Average : 278.503ms,
-Stdev   : 38.4011ms,
-Time to erase 1000000 elements:
-Average : 319.135ms,
-Stdev   : 53.72ms,
+Time to insert 1000000 elements: Average : 270.972ms, Stdev   : 39.1409ms,
+Time to lookup 1000000 elements: Average : 278.503ms, Stdev   : 38.4011ms,
+Time to erase 1000000 elements: Average : 319.135ms, Stdev   : 53.72ms,
 
 frozenca::DiskBTreeSet test (fanout 256)
-Time to insert 1000000 elements:
-Average : 275.44ms,
-Stdev   : 41.0816ms,
-Time to lookup 1000000 elements:
-Average : 291.28ms,
-Stdev   : 57.7289ms,
-Time to erase 1000000 elements:
-Average : 311.817ms,
-Stdev   : 36.3663ms,
+Time to insert 1000000 elements: Average : 275.44ms, Stdev   : 41.0816ms,
+Time to lookup 1000000 elements: Average : 291.28ms, Stdev   : 57.7289ms,
+Time to erase 1000000 elements: Average : 311.817ms, Stdev   : 36.3663ms,
 
 std::set test
-Time to insert 1000000 elements:
-Average : 862.43ms,
-Stdev   : 80.9261ms,
-Time to lookup 1000000 elements:
-Average : 931.062ms,
-Stdev   : 111.371ms,
-Time to erase 1000000 elements:
-Average : 946.256ms,
-Stdev   : 43.5721ms,
+Time to insert 1000000 elements: Average : 862.43ms, Stdev   : 80.9261ms,
+Time to lookup 1000000 elements: Average : 931.062ms, Stdev   : 111.371ms,
+Time to erase 1000000 elements: Average : 946.256ms, Stdev   : 43.5721ms,
 
 Google btree::btree_set test (fanout 64)
-Time to insert 1000000 elements:
-Average : 382.617ms,
-Stdev   : 36.5722ms,
-Time to lookup 1000000 elements:
-Average : 344.884ms,
-Stdev   : 38.0878ms,
-Time to erase 1000000 elements:
-Average : 384.639ms,
-Stdev   : 33.8115ms,
+Time to insert 1000000 elements: Average : 382.617ms, Stdev   : 36.5722ms,
+Time to lookup 1000000 elements: Average : 344.884ms, Stdev   : 38.0878ms,
+Time to erase 1000000 elements: Average : 384.639ms, Stdev   : 33.8115ms,
 
 Google btree::btree_set test (fanout 256 - default)
-Time to insert 1000000 elements:
-Average : 194.117ms,
-Stdev   : 16.211ms,
-Time to lookup 1000000 elements:
-Average : 184.073ms,
-Stdev   : 9.45609ms,
-Time to erase 1000000 elements:
-Average : 197.921ms,
-Stdev   : 6.43696ms,
+Time to insert 1000000 elements: Average : 194.117ms, Stdev   : 16.211ms,
+Time to lookup 1000000 elements: Average : 184.073ms, Stdev   : 9.45609ms,
+Time to erase 1000000 elements: Average : 197.921ms, Stdev   : 6.43696ms,
 ```
 
 ## Sanity check and unit test
