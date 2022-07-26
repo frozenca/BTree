@@ -83,7 +83,7 @@ It is recommended to users to choose a fanout parameter suitable to their usages
 
 ## Supported operations
 
-Other than regular operations supported by ```std::set``` and its friends (```lower_bound()```, ```upper_bound()```, ```equal_range()``` and etc), the following operations are supported:
+Other than regular operations supported by ```std::set``` and its friends (```lower_bound()```, ```upper_bound()```, ```equal_range()``` and etc), the following operations are supported.
 
 ```tree.count(const key_type& key)``` : Returns the number of elements in the tree for their key is equivalent to ```key```. Time complexity: ```O(log n)```
 
@@ -157,4 +157,4 @@ and by running ```test/unittest.cpp``` you can verify basic operations.
 
 ## License
 
-This library is licensed under Apache License Version 2.0 with LLVM Exceptions (LICENSE-Apache2-LLVM or https://llvm.org/foundation/relicensing/LICENSE.txt)
+This library is licensed under either of Apache License Version 2.0 with LLVM Exceptions (LICENSE-Apache2-LLVM or https://llvm.org/foundation/relicensing/LICENSE.txt) or Boost Software License Version 1.0 (LICENSE-Boost or https://www.boost.org/LICENSE_1_0.txt).
