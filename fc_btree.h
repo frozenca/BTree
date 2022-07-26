@@ -161,7 +161,10 @@ requires(Fanout >= 2) class BTreeBase {
     attr_t num_keys_ =
         0; // number of keys in this node, used only for disk variant
     keys_type keys_;
-    std::vector<std::unique_ptr<Node, Deleter<Alloc, Node>>> children_;
+    std::vector<std::conditional_t<is_disk_,
+                                   std::unique_ptr<Node, Deleter<Alloc, Node>>,
+                                   std::unique_ptr<Node>>>
+        children_;
 
     // can throw bad_alloc
     Node() requires(is_disk_) {}
@@ -405,6 +408,9 @@ public:
   using difference_type = attr_t;
   using allocator_type = Alloc;
   using deleter_type = Deleter<Alloc, Node>;
+  using nodeptr_type =
+      std::conditional_t<DiskAllocable<V>, std::unique_ptr<Node, deleter_type>,
+                         std::unique_ptr<Node>>;
   using Proj =
       std::conditional_t<is_set_, std::identity, Projection<const V &>>;
   using ProjIter = std::conditional_t<is_set_, std::identity,
@@ -431,20 +437,23 @@ public:
 
 private:
   [[no_unique_address]] Alloc alloc_;
-  std::unique_ptr<Node, deleter_type> root_;
+  nodeptr_type root_;
   const_iterator_type begin_;
 
 protected:
-  Node *make_node() {
-    auto buf = alloc_.allocate(sizeof(Node));
-    Node *node = new (buf) Node();
-    return node;
+  nodeptr_type make_node() {
+    if constexpr (is_disk_) {
+      auto buf = alloc_.allocate(sizeof(Node));
+      Node *node = new (buf) Node();
+      return nodeptr_type(node, deleter_type(alloc_));
+    } else {
+      return std::make_unique<Node>();
+    }
   }
 
 public:
   BTreeBase(const Alloc &alloc = Alloc{})
-      : alloc_{alloc},
-        root_(make_node(), deleter_type(alloc_)), begin_{root_.get(), 0} {}
+      : alloc_{alloc}, root_(make_node()), begin_{root_.get(), 0} {}
 
   BTreeBase(std::initializer_list<value_type> init,
             const Alloc &alloc = Alloc{})
@@ -603,7 +612,7 @@ protected:
 
 public:
   void clear() {
-    root_ = std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
+    root_ = make_node();
     begin_ = iterator_type(root_.get(), 0);
   }
 
@@ -749,9 +758,9 @@ protected:
       std::ranges::move(sibling->children_ | std::views::take(n),
                         std::back_inserter(node->children_));
       std::shift_left(sibling->children_.begin(), sibling->children_.end(), n);
-      sibling->children_.resize(std::ssize(sibling->children_) - n,
-                                std::unique_ptr<Node, deleter_type>(
-                                    make_node(), deleter_type(alloc_)));
+      for (attr_t idx = 0; idx < n; ++idx) {
+        sibling->children_.pop_back();
+      }
       attr_t sibling_index = 0;
       for (auto &&child : sibling->children_) {
         child->index_ = sibling_index++;
@@ -870,9 +879,9 @@ protected:
           std::back_inserter(node->children_));
       std::ranges::rotate(node->children_ | std::views::reverse,
                           node->children_.rbegin() + n);
-      sibling->children_.resize(std::ssize(sibling->children_) - n,
-                                std::unique_ptr<Node, deleter_type>(
-                                    make_node(), deleter_type(alloc_)));
+      for (attr_t idx = 0; idx < n; ++idx) {
+        sibling->children_.pop_back();
+      }
       attr_t child_index = n;
       for (auto &&child : node->children_ | std::views::drop(n)) {
         child->index_ = child_index++;
@@ -1004,8 +1013,7 @@ protected:
     // y->keys_[t - 1] will be a key of y->parent_
     // right t keys of y will be taken by y's right sibling
 
-    auto z = std::unique_ptr<Node, deleter_type>(
-        make_node(), deleter_type(alloc_)); // will be y's right sibling
+    auto z = make_node(); // will be y's right sibling
     z->parent_ = x;
     z->index_ = i + 1;
     z->height_ = y->height_;
@@ -1551,8 +1559,7 @@ protected:
   insert_value(T &&key) requires(std::is_same_v<std::remove_cvref_t<T>, V>) {
     if (root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::unique_ptr<Node, deleter_type>(make_node(),
-                                                          deleter_type(alloc_));
+      auto new_root = make_node();
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
@@ -1602,8 +1609,8 @@ public:
   auto &operator[](T &&raw_key) requires(!is_set_ && !AllowDup) {
     if (root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root =
-          std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
+      auto new_root = make_node();
+
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
@@ -2102,7 +2109,6 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
   using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
   using Node = Tree::node_type;
   using Proj = Tree::Proj;
-  using deleter_type = Tree::deleter_type;
   constexpr bool is_disk_ = Tree::is_disk_;
 
   V mid_value{std::forward<T>(raw_value)};
@@ -2127,8 +2133,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     Node *curr = new_tree.root_.get();
     if (new_tree.root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::unique_ptr<Node, deleter_type>(
-          new_tree.make_node(), Deleter(new_tree.alloc_));
+      auto new_root = new_tree.make_node();
       new_tree.root_->index_ = 0;
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
@@ -2155,8 +2160,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     auto parent = curr->parent_;
     if (!parent) {
       // tree_left was empty or height of two trees were the same
-      auto new_root = std::unique_ptr<Node, deleter_type>(
-          tree_left.make_node(), Deleter(tree_left.alloc_));
+      auto new_root = tree_left.make_node();
       new_root->height_ = new_tree.root_->height_ + 1;
 
       if constexpr (is_disk_) {
@@ -2209,8 +2213,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     Node *curr = new_tree.root_.get();
     if (new_tree.root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::unique_ptr<Node, deleter_type>(
-          new_tree.make_node(), Deleter(new_tree.alloc_));
+      auto new_root = new_tree.make_node();
       new_tree.root_->index_ = 0;
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
