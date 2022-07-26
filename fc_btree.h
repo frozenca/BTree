@@ -182,13 +182,8 @@ requires(Fanout >= 2) class BTreeBase {
       size_ = other.size_;
       if (!other.is_leaf()) {
         assert(is_leaf());
-        children_.reserve(Fanout * 2);
-        children_.resize(other.children_.size(),
-                         std::unique_ptr<Node, deleter_type>(
-                             make_node(), deleter_type(alloc_)));
         for (attr_t i = 0; i < std::ssize(other.children_); ++i) {
-          children_[i] = std::unique_ptr<Node, deleter_type>(
-              make_node(), deleter_type(alloc_));
+          children_.push_back(make_node());
           children_[i]->clone(other.children_[i]);
           children_[i]->parent_ = this;
           children_[i]->index_ = i;
@@ -466,7 +461,7 @@ public:
   BTreeBase(const BTreeBase &other) {
     alloc_ = other.alloc_;
     if (other.root_) {
-      root_ = std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
+      root_ = make_node();
       root_->clone(*(other.root_));
       root_->parent_ = nullptr;
     }
@@ -735,9 +730,7 @@ protected:
       // parent brings one key from sibling
       parent->keys_[node->index_] = std::move(sibling->keys_[n - 1]);
       std::shift_left(sibling->keys_.begin(), sibling->keys_.end(), n);
-      sibling->keys_.resize(sibling->nkeys() - n,
-                            std::unique_ptr<Node, deleter_type>(
-                                make_node(), deleter_type(alloc_)));
+      sibling->keys_.resize(sibling->nkeys() - n);
     }
 
     node->size_ += n;
@@ -1821,13 +1814,8 @@ protected:
     }
     node->size_ = node->num_keys_;
     if (node_height > 0) {
-      node->children_.reserve(2 * Fanout);
-      node->children_.resize(node->num_keys_ + 1,
-                             std::unique_ptr<Node, deleter_type>(
-                                 make_node(), deleter_type(alloc_)));
       for (attr_t i = 0; i <= node->num_keys_; ++i) {
-        node->children_[i] =
-            std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
+        node->children_.push_back(make_node());
         node->children_[i]->parent_ = node;
         if (!deserialize_node(is, node->children_[i].get(), i,
                               node_height - 1)) {
