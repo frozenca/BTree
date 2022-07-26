@@ -2308,23 +2308,23 @@ split(
                                  tree.find_upper_bound(key2, false));
 }
 
-template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,
+template <Containable K, attr_t t = 64, typename Comp = std::ranges::less,
           typename Alloc = std::allocator<
               std::conditional_t<DiskAllocable<K>, unsigned char, K>>>
 using BTreeSet = BTreeBase<K, K, t, Comp, false, Alloc>;
 
-template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,
+template <Containable K, attr_t t = 64, typename Comp = std::ranges::less,
           typename Alloc = std::allocator<
               std::conditional_t<DiskAllocable<K>, unsigned char, K>>>
 using BTreeMultiSet = BTreeBase<K, K, t, Comp, true, Alloc>;
 
-template <Containable K, Containable V, attr_t t = 2,
+template <Containable K, Containable V, attr_t t = 64,
           typename Comp = std::ranges::less,
           typename Alloc = std::allocator<std::conditional_t<
               DiskAllocable<BTreePair<K, V>>, unsigned char, K>>>
 using BTreeMap = BTreeBase<K, BTreePair<K, V>, t, Comp, false, Alloc>;
 
-template <Containable K, Containable V, attr_t t = 2,
+template <Containable K, Containable V, attr_t t = 64,
           typename Comp = std::ranges::less,
           typename Alloc = std::allocator<std::conditional_t<
               DiskAllocable<BTreePair<K, V>>, unsigned char, K>>>
