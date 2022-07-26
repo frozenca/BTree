@@ -2,6 +2,7 @@
 #define __FC_BTREE_H__
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <concepts>
 #include <cstdint>
@@ -88,6 +89,14 @@ template <typename V> struct ProjectionIter {
   }
 };
 
+template <typename Alloc, typename Node> struct Deleter {
+  [[no_unique_address]] Alloc alloc_;
+  Deleter(const Alloc &alloc) : alloc_{alloc} {}
+  void operator()(Node *node) noexcept {
+    alloc_.deallocate(reinterpret_cast<unsigned char *>(node), sizeof(Node));
+  }
+};
+
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc>
 requires(Fanout >= 2) class BTreeBase;
@@ -122,9 +131,6 @@ split(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree, T &&raw_key1,
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc>
 requires(Fanout >= 2) class BTreeBase {
-  static_assert(std::is_same_v<typename Alloc::value_type, V>,
-                "Allocator value type is not V");
-
   // invariant: V is either K or pair<const K, Value> for some Value type.
   static constexpr bool is_set_ = std::is_same_v<K, V>;
 
@@ -133,11 +139,13 @@ requires(Fanout >= 2) class BTreeBase {
   static constexpr auto disk_max_nkeys =
       static_cast<std::size_t>(2 * Fanout - 1);
 
-  static constexpr bool use_linsearch_ = std::is_arithmetic_v<K> && (Fanout <= 256);
+  static constexpr bool use_linsearch_ =
+      std::is_arithmetic_v<K> && (Fanout <= 128);
 
   struct Node {
-    using keys_type = std::conditional_t<is_disk_, std::span<V, disk_max_nkeys>,
-                                         std::vector<V, Alloc>>;
+    using keys_type =
+        std::conditional_t<is_disk_, std::array<V, disk_max_nkeys>,
+                           std::vector<V>>;
 
     // invariant: except root, t - 1 <= #(key) <= 2 * t - 1
     // invariant: for root, 0 <= #(key) <= 2 * t - 1
@@ -146,31 +154,19 @@ requires(Fanout >= 2) class BTreeBase {
     // invariant: for root, 0 <= #(child) == (#(key) + 1)) <= 2 * t
     // invariant: for leaves, 0 == #(child)
     // invariant: child_0 <= key_0 <= child_1 <= ... <=  key_(N - 1) <= child_N
-    [[no_unique_address]] Alloc alloc_;
-    keys_type keys_;
-    std::vector<std::unique_ptr<Node>> children_;
     Node *parent_ = nullptr;
     attr_t size_ = 0; // number of keys in the subtree (not keys in this node)
     attr_t index_ = 0;
     attr_t height_ = 0;
     attr_t num_keys_ =
         0; // number of keys in this node, used only for disk variant
+    keys_type keys_;
+    std::vector<std::unique_ptr<Node, Deleter<Alloc, Node>>> children_;
 
     // can throw bad_alloc
-    explicit Node(Alloc &alloc) requires(is_disk_)
-        : alloc_{alloc},
-          keys_(alloc_.allocate(disk_max_nkeys), disk_max_nkeys) {}
+    Node() requires(is_disk_) {}
 
-    explicit Node(Alloc &alloc) requires(!is_disk_)
-        : alloc_{alloc}, keys_{alloc_} {
-      keys_.reserve(2 * Fanout - 1);
-    }
-
-    ~Node() {
-      if constexpr (is_disk_) {
-        alloc_.deallocate(keys_.data(), disk_max_nkeys);
-      }
-    }
+    Node() requires(!is_disk_) { keys_.reserve(disk_max_nkeys); }
 
     Node(const Node &node) = delete;
     Node &operator=(const Node &node) = delete;
@@ -184,9 +180,12 @@ requires(Fanout >= 2) class BTreeBase {
       if (!other.is_leaf()) {
         assert(is_leaf());
         children_.reserve(Fanout * 2);
-        children_.resize(other.children_.size());
+        children_.resize(other.children_.size(),
+                         std::unique_ptr<Node, deleter_type>(
+                             make_node(), deleter_type(alloc_)));
         for (attr_t i = 0; i < std::ssize(other.children_); ++i) {
-          children_[i] = std::make_unique<Node>(alloc_);
+          children_[i] = std::unique_ptr<Node, deleter_type>(
+              make_node(), deleter_type(alloc_));
           children_[i]->clone(other.children_[i]);
           children_[i]->parent_ = this;
           children_[i]->index_ = i;
@@ -405,6 +404,7 @@ public:
   using size_type = std::size_t;
   using difference_type = attr_t;
   using allocator_type = Alloc;
+  using deleter_type = Deleter<Alloc, Node>;
   using Proj =
       std::conditional_t<is_set_, std::identity, Projection<const V &>>;
   using ProjIter = std::conditional_t<is_set_, std::identity,
@@ -412,8 +412,7 @@ public:
 
   static_assert(
       std::indirect_strict_weak_order<
-          Comp, std::projected<std::ranges::iterator_t<std::vector<V, Alloc>>,
-                               Proj>>);
+          Comp, std::projected<std::ranges::iterator_t<std::vector<V>>, Proj>>);
 
   // invariant: K cannot be mutated
   // so if V is K, uses a const iterator.
@@ -432,14 +431,20 @@ public:
 
 private:
   [[no_unique_address]] Alloc alloc_;
-  std::unique_ptr<Node> root_;
+  std::unique_ptr<Node, deleter_type> root_;
   const_iterator_type begin_;
+
+protected:
+  Node *make_node() {
+    auto buf = alloc_.allocate(sizeof(Node));
+    Node *node = new (buf) Node();
+    return node;
+  }
 
 public:
   BTreeBase(const Alloc &alloc = Alloc{})
-      : alloc_{alloc}, root_{std::make_unique<Node>(alloc_)}, begin_{
-                                                                  root_.get(),
-                                                                  0} {}
+      : alloc_{alloc},
+        root_(make_node(), deleter_type(alloc_)), begin_{root_.get(), 0} {}
 
   BTreeBase(std::initializer_list<value_type> init,
             const Alloc &alloc = Alloc{})
@@ -452,7 +457,7 @@ public:
   BTreeBase(const BTreeBase &other) {
     alloc_ = other.alloc_;
     if (other.root_) {
-      root_ = std::make_unique<Node>(alloc_);
+      root_ = std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
       root_->clone(*(other.root_));
       root_->parent_ = nullptr;
     }
@@ -598,7 +603,7 @@ protected:
 
 public:
   void clear() {
-    root_ = std::make_unique<Node>(alloc_);
+    root_ = std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
     begin_ = iterator_type(root_.get(), 0);
   }
 
@@ -721,7 +726,9 @@ protected:
       // parent brings one key from sibling
       parent->keys_[node->index_] = std::move(sibling->keys_[n - 1]);
       std::shift_left(sibling->keys_.begin(), sibling->keys_.end(), n);
-      sibling->keys_.resize(sibling->nkeys() - n);
+      sibling->keys_.resize(sibling->nkeys() - n,
+                            std::unique_ptr<Node, deleter_type>(
+                                make_node(), deleter_type(alloc_)));
     }
 
     node->size_ += n;
@@ -742,7 +749,9 @@ protected:
       std::ranges::move(sibling->children_ | std::views::take(n),
                         std::back_inserter(node->children_));
       std::shift_left(sibling->children_.begin(), sibling->children_.end(), n);
-      sibling->children_.resize(std::ssize(sibling->children_) - n);
+      sibling->children_.resize(std::ssize(sibling->children_) - n,
+                                std::unique_ptr<Node, deleter_type>(
+                                    make_node(), deleter_type(alloc_)));
       attr_t sibling_index = 0;
       for (auto &&child : sibling->children_) {
         child->index_ = sibling_index++;
@@ -861,7 +870,9 @@ protected:
           std::back_inserter(node->children_));
       std::ranges::rotate(node->children_ | std::views::reverse,
                           node->children_.rbegin() + n);
-      sibling->children_.resize(std::ssize(sibling->children_) - n);
+      sibling->children_.resize(std::ssize(sibling->children_) - n,
+                                std::unique_ptr<Node, deleter_type>(
+                                    make_node(), deleter_type(alloc_)));
       attr_t child_index = n;
       for (auto &&child : node->children_ | std::views::drop(n)) {
         child->index_ = child_index++;
@@ -993,7 +1004,8 @@ protected:
     // y->keys_[t - 1] will be a key of y->parent_
     // right t keys of y will be taken by y's right sibling
 
-    auto z = std::make_unique<Node>(alloc_); // will be y's right sibling
+    auto z = std::unique_ptr<Node, deleter_type>(
+        make_node(), deleter_type(alloc_)); // will be y's right sibling
     z->parent_ = x;
     z->index_ = i + 1;
     z->height_ = y->height_;
@@ -1018,7 +1030,9 @@ protected:
         child->index_ -= Fanout;
         z_size += child->size_;
       }
-      y->children_.resize(Fanout);
+      while (static_cast<attr_t>(std::ssize(y->children_)) > Fanout) {
+        y->children_.pop_back();
+      }
     }
     z->size_ = z_size;
     y->size_ -= (z_size + 1);
@@ -1537,7 +1551,8 @@ protected:
   insert_value(T &&key) requires(std::is_same_v<std::remove_cvref_t<T>, V>) {
     if (root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(alloc_);
+      auto new_root = std::unique_ptr<Node, deleter_type>(make_node(),
+                                                          deleter_type(alloc_));
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
@@ -1587,7 +1602,8 @@ public:
   auto &operator[](T &&raw_key) requires(!is_set_ && !AllowDup) {
     if (root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(alloc_);
+      auto new_root =
+          std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
       root_->parent_ = new_root.get();
       new_root->size_ = root_->size_;
       new_root->height_ = root_->height_ + 1;
@@ -1799,9 +1815,12 @@ protected:
     node->size_ = node->num_keys_;
     if (node_height > 0) {
       node->children_.reserve(2 * Fanout);
-      node->children_.resize(node->num_keys_ + 1);
+      node->children_.resize(node->num_keys_ + 1,
+                             std::unique_ptr<Node, deleter_type>(
+                                 make_node(), deleter_type(alloc_)));
       for (attr_t i = 0; i <= node->num_keys_; ++i) {
-        node->children_[i] = std::make_unique<Node>(alloc_);
+        node->children_[i] =
+            std::unique_ptr<Node, deleter_type>(make_node(), Deleter(alloc_));
         node->children_[i]->parent_ = node;
         if (!deserialize_node(is, node->children_[i].get(), i,
                               node_height - 1)) {
@@ -2083,6 +2102,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
   using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
   using Node = Tree::node_type;
   using Proj = Tree::Proj;
+  using deleter_type = Tree::deleter_type;
   constexpr bool is_disk_ = Tree::is_disk_;
 
   V mid_value{std::forward<T>(raw_value)};
@@ -2107,7 +2127,8 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     Node *curr = new_tree.root_.get();
     if (new_tree.root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(new_tree.alloc_);
+      auto new_root = std::unique_ptr<Node, deleter_type>(
+          new_tree.make_node(), Deleter(new_tree.alloc_));
       new_tree.root_->index_ = 0;
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
@@ -2134,7 +2155,8 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     auto parent = curr->parent_;
     if (!parent) {
       // tree_left was empty or height of two trees were the same
-      auto new_root = std::make_unique<Node>(tree_left.alloc_);
+      auto new_root = std::unique_ptr<Node, deleter_type>(
+          tree_left.make_node(), Deleter(tree_left.alloc_));
       new_root->height_ = new_tree.root_->height_ + 1;
 
       if constexpr (is_disk_) {
@@ -2187,7 +2209,8 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     Node *curr = new_tree.root_.get();
     if (new_tree.root_->is_full()) {
       // if root is full then make it as a child of the new root
-      auto new_root = std::make_unique<Node>(new_tree.alloc_);
+      auto new_root = std::unique_ptr<Node, deleter_type>(
+          new_tree.make_node(), Deleter(new_tree.alloc_));
       new_tree.root_->index_ = 0;
       new_tree.root_->parent_ = new_root.get();
       new_root->size_ = new_tree.root_->size_;
@@ -2286,21 +2309,25 @@ split(
 }
 
 template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,
-          typename Alloc = std::allocator<K>>
+          typename Alloc = std::allocator<
+              std::conditional_t<DiskAllocable<K>, unsigned char, K>>>
 using BTreeSet = BTreeBase<K, K, t, Comp, false, Alloc>;
 
 template <Containable K, attr_t t = 2, typename Comp = std::ranges::less,
-          typename Alloc = std::allocator<K>>
+          typename Alloc = std::allocator<
+              std::conditional_t<DiskAllocable<K>, unsigned char, K>>>
 using BTreeMultiSet = BTreeBase<K, K, t, Comp, true, Alloc>;
 
 template <Containable K, Containable V, attr_t t = 2,
           typename Comp = std::ranges::less,
-          typename Alloc = std::allocator<BTreePair<K, V>>>
+          typename Alloc = std::allocator<std::conditional_t<
+              DiskAllocable<BTreePair<K, V>>, unsigned char, K>>>
 using BTreeMap = BTreeBase<K, BTreePair<K, V>, t, Comp, false, Alloc>;
 
 template <Containable K, Containable V, attr_t t = 2,
           typename Comp = std::ranges::less,
-          typename Alloc = std::allocator<BTreePair<K, V>>>
+          typename Alloc = std::allocator<std::conditional_t<
+              DiskAllocable<BTreePair<K, V>>, unsigned char, K>>>
 using BTreeMultiMap = BTreeBase<K, BTreePair<K, V>, t, Comp, true, Alloc>;
 
 } // namespace frozenca
