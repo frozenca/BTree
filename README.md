@@ -95,7 +95,7 @@ Other than regular operations supported by ```std::set``` and its friends (```lo
 
 ```tree.insert_range(ForwardIter first, ForwardIter last)``` : Inserts the elements in ```[first, last)```. The range version also exists. Time complexity: ```O(k log k + log n)``` if all of elements in the range can be fit between two elements in the tree, otherwise ```O(k log n)```
 
-```tree.erase_range(const key_type& a, const key_type&)``` : Erases the elements for their key in ```[a, b]```. Time complexity: ```O(log n)```
+```tree.erase_range(const key_type& a, const key_type&)``` : Erases the elements for their key in ```[a, b]```. Time complexity: ```O(log n)``` (NOT ```O(k log n)```)
 
 ```frozenca::join(Tree&& tree1, Tree&& tree2)``` : Joins two trees to a single tree. The largest key in ```tree1``` should be less than or equal to the smallest key in ```tree2```. Time complexity: ```O(log n)```
 
