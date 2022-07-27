@@ -72,14 +72,12 @@ You can refer more example usages in ```test/unittest.cpp```.
 
 Users can specify a fanout parameter for B-tree: the default is 64.
 
-The smallest possible value for fanout is 2, where a B-Tree boils down to an [2-3-4 tree](https://en.wikipedia.org/wiki/2%E2%80%933%E2%80%934_tree) 
-
-It is recommended to users to choose a fanout parameter suitable to their usages, instead of using the default value.
-
 ```cpp
-  // btree with fanout 4
-  fc::BTreeSet<int, 4> btree;
+  // btree with fanout 128
+  fc::BTreeSet<int, 128> btree;
 ```
+
+The smallest possible value for fanout is 2, where a B-Tree boils down to an [2-3-4 tree](https://en.wikipedia.org/wiki/2%E2%80%933%E2%80%934_tree) 
 
 ## Supported operations
 
@@ -111,6 +109,13 @@ STL compatible iterators are fully supported. (both ```const``` and non-```const
 ## Concurrency
 
 Currently, thread safety is not guaranteed. Lock-free support is the first TODO, but contributions are welcome if you're interested.
+
+## Linear search vs Binary search
+
+The core operation for B-Tree is a search in the sorted key array of each node. For small arrays with primitive key types that have relatively cheap comparisons, linear search is often better than binary search. This threshold may vary by compiler by a big margin.
+
+If you use Clang, I recommend that you set this variable to 1. For gcc users, it seems better not to change the variable (may be changed by future gcc optimizations)
+https://github.com/frozenca/BTree/blob/7083e8034b5905552cc6a3b8277452c56c05d587/fc_btree.h#L22
 
 ## Disk B-Tree
 
