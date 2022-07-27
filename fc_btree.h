@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#define FC_PREFER_BINARY_SEARCH 0
+
 namespace frozenca {
 
 template <typename T>
@@ -140,7 +142,11 @@ requires(Fanout >= 2) class BTreeBase {
       static_cast<std::size_t>(2 * Fanout - 1);
 
   static constexpr bool use_linsearch_ =
+#if FC_PREFER_BINARY_SEARCH
+      std::is_arithmetic_v<K> && (Fanout <= 32);
+#else
       std::is_arithmetic_v<K> && (Fanout <= 128);
+#endif // FC_PREFER_BINARY_SEARCH
 
   struct Node {
     using keys_type =
@@ -175,22 +181,6 @@ requires(Fanout >= 2) class BTreeBase {
     Node &operator=(const Node &node) = delete;
     Node(Node &&node) = delete;
     Node &operator=(Node &&node) = delete;
-
-    void clone(const Node &other) {
-      alloc_ = other.alloc_;
-      keys_ = other.keys_;
-      size_ = other.size_;
-      if (!other.is_leaf()) {
-        assert(is_leaf());
-        for (attr_t i = 0; i < std::ssize(other.children_); ++i) {
-          children_.push_back(make_node());
-          children_[i]->clone(other.children_[i]);
-          children_[i]->parent_ = this;
-          children_[i]->index_ = i;
-          children_[i]->height_ = other.children_[i].height_;
-        }
-      }
-    }
 
     [[nodiscard]] bool is_leaf() const noexcept { return children_.empty(); }
 
@@ -458,20 +448,8 @@ public:
     }
   }
 
-  BTreeBase(const BTreeBase &other) {
-    alloc_ = other.alloc_;
-    if (other.root_) {
-      root_ = make_node();
-      root_->clone(*(other.root_));
-      root_->parent_ = nullptr;
-    }
-    begin_ = iterator_type(leftmost_leaf(root_.get()), 0);
-  }
-  BTreeBase &operator=(const BTreeBase &other) {
-    BTreeBase tree(other);
-    this->swap(tree);
-    return *this;
-  }
+  BTreeBase(const BTreeBase &other) = delete;
+  BTreeBase &operator=(const BTreeBase &other) = delete;
   BTreeBase(BTreeBase &&other) noexcept = default;
   BTreeBase &operator=(BTreeBase &&other) noexcept = default;
 
