@@ -1,6 +1,7 @@
 #ifndef __FC_BTREE_H__
 #define __FC_BTREE_H__
 
+#include "fc_comp.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -11,6 +12,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <ranges>
 #include <span>
@@ -26,7 +28,7 @@ concept Containable = std::is_same_v<std::remove_cvref_t<T>, T>;
 
 template <typename T>
 concept DiskAllocable = std::is_same_v<std::remove_cvref_t<T>, T> &&
-    std::is_trivially_copyable_v<T> &&(sizeof(T) % alignof(T) == 0);
+    std::is_trivially_copyable_v<T> && (sizeof(T) % alignof(T) == 0);
 
 using attr_t = std::int32_t;
 
@@ -93,7 +95,8 @@ template <typename Alloc, typename Node> struct Deleter {
   [[no_unique_address]] Alloc alloc_;
   Deleter(const Alloc &alloc) : alloc_{alloc} {}
   void operator()(Node *node) noexcept {
-    alloc_.deallocate(reinterpret_cast<unsigned char *>(node), sizeof(Node));
+
+          alloc_.deallocate(reinterpret_cast<unsigned char *>(node), sizeof(Node));
   }
 };
 
@@ -129,326 +132,378 @@ split(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree, T &&raw_key1,
       T &&raw_key2) requires std::is_constructible_v<K, std::remove_cvref_t<T>>;
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
+        bool AllowDup, typename Alloc>
+class BTreeTraits {
+    friend class BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
+
+    // invariant: V is either K or BTreePair<K, V> for some Value type.
+    static constexpr bool is_set_ = std::is_same_v<K, V>;
+    static constexpr bool is_pod_ = DiskAllocable<V>;
+    static constexpr auto disk_max_nkeys =
+            static_cast<std::size_t>(2 * Fanout);
+    static constexpr bool CompIsLess = std::is_same_v<Comp, std::ranges::less> || std::is_same_v<Comp, std::less<K>>;
+    static constexpr bool CompIsGreater = std::is_same_v<Comp, std::ranges::greater> || std::is_same_v<Comp, std::greater<K>>;
+
+    static constexpr bool use_simd_binsearch_ = (is_set_) && CanUseSimd<K> && (Fanout % 16 == 0) &&
+                                                (CompIsLess || CompIsGreater);
+
+    [[no_unique_address]] Alloc alloc_;
+
+    BTreeTraits(const Alloc &alloc = Alloc{}) : alloc_{alloc} {}
+
+    struct alignas(64) Node {
+        using keys_type =
+        std::conditional_t<is_pod_, std::array<V, disk_max_nkeys>, std::vector<V>>;
+
+        // invariant: except root, t - 1 <= #(key) <= 2 * t - 1
+        // invariant: for root, 0 <= #(key) <= 2 * t - 1
+        // invariant: keys are sorted
+        // invariant: for internal nodes, t <= #(child) == (#(key) + 1)) <= 2 * t
+        // invariant: for root, 0 <= #(child) == (#(key) + 1)) <= 2 * t
+        // invariant: for leaves, 0 == #(child)
+        // invariant: child_0 <= key_0 <= child_1 <= ... <=  key_(N - 1) <= child_N
+        keys_type keys_;
+        Node *parent_ = nullptr;
+        attr_t size_ = 0; // number of keys in the subtree (not keys in this node)
+        attr_t index_ = 0;
+        attr_t height_ = 0;
+        attr_t num_keys_ =
+                0; // number of keys in this node, used only for disk variant
+        std::vector<std::unique_ptr<Node>>
+                //        std::vector<std::conditional_t<is_pod_,
+//                std::unique_ptr<Node, Deleter<Alloc, Node>>,
+//                std::unique_ptr<Node>>>
+                children_;
+
+        // can throw bad_alloc
+        Node() requires(is_pod_) {
+            if constexpr (use_simd_binsearch_) {
+                keys_.fill(std::numeric_limits<K>::max());
+            }
+        }
+
+        Node() requires(!is_pod_) { keys_.reserve(disk_max_nkeys); }
+
+        Node(const Node &node) = delete;
+        Node &operator=(const Node &node) = delete;
+        Node(Node &&node) = delete;
+        Node &operator=(Node &&node) = delete;
+
+        [[nodiscard]] bool is_leaf() const noexcept { return children_.empty(); }
+
+        [[nodiscard]] bool is_full() const noexcept {
+            if constexpr (is_pod_) {
+                return num_keys_ == 2 * Fanout - 1;
+            } else {
+                return std::ssize(keys_) == 2 * Fanout - 1;
+            }
+        }
+
+        [[nodiscard]] bool can_take_key() const noexcept {
+            if constexpr (is_pod_) {
+                return num_keys_ > Fanout - 1;
+            } else {
+                return std::ssize(keys_) > Fanout - 1;
+            }
+        }
+
+        [[nodiscard]] bool has_minimal_keys() const noexcept {
+            if constexpr (is_pod_) {
+                return parent_ && num_keys_ == Fanout - 1;
+            } else {
+                return parent_ && std::ssize(keys_) == Fanout - 1;
+            }
+        }
+
+        [[nodiscard]] bool empty() const noexcept {
+            if constexpr (is_pod_) {
+                return num_keys_ == 0;
+            } else {
+                return keys_.empty();
+            }
+        }
+
+        void clear_keys() noexcept {
+            if constexpr (is_pod_) {
+                num_keys_ = 0;
+            } else {
+                keys_.clear();
+            }
+        }
+
+        [[nodiscard]] attr_t nkeys() const noexcept {
+            if constexpr (is_pod_) {
+                return num_keys_;
+            } else {
+                return static_cast<attr_t>(std::ssize(keys_));
+            }
+        }
+    };
+
+    struct BTreeNonConstIterTraits {
+        using difference_type = attr_t;
+        using value_type = V;
+        using pointer = V *;
+        using reference = V &;
+        using iterator_category = std::bidirectional_iterator_tag;
+        using iterator_concept = iterator_category;
+
+        static reference make_ref(value_type &val) noexcept { return val; }
+    };
+
+    struct BTreeConstIterTraits {
+        using difference_type = attr_t;
+        using value_type = V;
+        using pointer = const V *;
+        using reference = const V &;
+        using iterator_category = std::bidirectional_iterator_tag;
+        using iterator_concept = iterator_category;
+
+        static reference make_ref(const value_type &val) noexcept { return val; }
+    };
+
+    struct BTreeRefIterTraits {
+        using difference_type = attr_t;
+        using value_type = V;
+        using pointer = V *;
+        using reference = PairRefType<V>;
+        using iterator_category = std::bidirectional_iterator_tag;
+        using iterator_concept = iterator_category;
+
+        static reference make_ref(value_type &val) noexcept {
+            return {std::cref(val.first), std::ref(val.second)};
+        }
+    };
+
+    using key_type = K;
+    using value_type = V;
+    using reference_type = std::conditional_t<is_set_, const V &, PairRefType<V>>;
+    using const_reference_type = const V &;
+    using node_type = Node;
+    using size_type = std::size_t;
+    using difference_type = attr_t;
+    using allocator_type = Alloc;
+    using deleter_type = Deleter<Alloc, Node>;
+    using nodeptr_type = std::unique_ptr<Node>;
+//    using nodeptr_type =
+//    std::conditional_t<is_pod_, std::unique_ptr<Node, deleter_type>,
+//            std::unique_ptr<Node>>;
+    using Proj =
+    std::conditional_t<is_set_, std::identity, Projection<const V &>>;
+    using ProjIter = std::conditional_t<is_set_, std::identity,
+            ProjectionIter<PairRefType<V>>>;
+
+    static_assert(
+            std::indirect_strict_weak_order<
+                    Comp, std::projected<std::ranges::iterator_t<std::vector<V>>, Proj>>);
+
+    template <typename IterTraits> struct BTreeIterator {
+        using difference_type = IterTraits::difference_type;
+        using value_type = IterTraits::value_type;
+        using pointer = IterTraits::pointer;
+        using reference = IterTraits::reference;
+        using iterator_category = IterTraits::iterator_category;
+        using iterator_concept = IterTraits::iterator_concept;
+
+        Node *node_ = nullptr;
+        attr_t index_;
+
+        BTreeIterator() noexcept = default;
+
+        BTreeIterator(Node *node, attr_t i) noexcept : node_{node}, index_{i} {
+            assert(node_ && i >= 0 && i <= node_->nkeys());
+        }
+
+        template <typename IterTraitsOther>
+        BTreeIterator(const BTreeIterator<IterTraitsOther> &other) noexcept
+                : BTreeIterator(other.node_, other.index_) {}
+
+        reference operator*() const noexcept {
+            return IterTraits::make_ref(node_->keys_[index_]);
+        }
+
+        pointer operator->() const noexcept { return &(node_->keys_[index_]); }
+
+        // useful remark:
+        // incrementing/decrementing iterator in an internal node will always
+        // produce an iterator in a leaf node,
+        // incrementing/decrementing iterator in a leaf node will always produce
+        // an iterator in a leaf node for non-boundary keys,
+        // an iterator in an internal node for boundary keys
+
+        void climb() noexcept {
+            while (node_->parent_ && index_ == node_->nkeys()) {
+                index_ = node_->index_;
+                node_ = node_->parent_;
+            }
+        }
+
+        void increment() noexcept {
+            // we don't do past to end() check for efficiency
+            if (!node_->is_leaf()) {
+                node_ = leftmost_leaf(node_->children_[index_ + 1].get());
+                index_ = 0;
+            } else {
+                ++index_;
+                while (node_->parent_ && index_ == node_->nkeys()) {
+                    index_ = node_->index_;
+                    node_ = node_->parent_;
+                }
+            }
+        }
+
+        void decrement() noexcept {
+            if (!node_->is_leaf()) {
+                node_ = rightmost_leaf(node_->children_[index_].get());
+                index_ = node_->nkeys() - 1;
+            } else if (index_ > 0) {
+                --index_;
+            } else {
+                while (node_->parent_ && node_->index_ == 0) {
+                    node_ = node_->parent_;
+                }
+                if (node_->index_ > 0) {
+                    index_ = node_->index_ - 1;
+                    node_ = node_->parent_;
+                }
+            }
+        }
+
+        bool verify() noexcept {
+            // Uncomment this line for testing
+             assert(!node_->parent_ || (index_ < node_->nkeys()));
+            return true;
+        }
+
+        BTreeIterator &operator++() noexcept {
+            increment();
+            assert(verify());
+            return *this;
+        }
+
+        BTreeIterator operator++(int) noexcept {
+            BTreeIterator temp = *this;
+            increment();
+            assert(verify());
+            return temp;
+        }
+
+        BTreeIterator &operator--() noexcept {
+            decrement();
+            assert(verify());
+            return *this;
+        }
+
+        BTreeIterator operator--(int) noexcept {
+            BTreeIterator temp = *this;
+            decrement();
+            assert(verify());
+            return temp;
+        }
+
+        friend bool operator==(const BTreeIterator &x,
+                               const BTreeIterator &y) noexcept {
+            return x.node_ == y.node_ && x.index_ == y.index_;
+        }
+
+        friend bool operator!=(const BTreeIterator &x,
+                               const BTreeIterator &y) noexcept {
+            return !(x == y);
+        }
+    };
+
+    // invariant: K cannot be mutated
+    // so if V is K, uses a const iterator.
+    // if V is BTreePair<K, V>, uses a non-const iterator (but only value can
+    // be mutated)
+    using nonconst_iterator_type = BTreeIterator<BTreeNonConstIterTraits>;
+    using iterator_type = BTreeIterator<
+            std::conditional_t<is_set_, BTreeConstIterTraits, BTreeRefIterTraits>>;
+    using const_iterator_type = BTreeIterator<BTreeConstIterTraits>;
+    using reverse_iterator_type = std::reverse_iterator<iterator_type>;
+    using const_reverse_iterator_type =
+    std::reverse_iterator<const_iterator_type>;
+
+    nodeptr_type make_node() {
+        if constexpr (is_pod_) {
+            // TODO: fix this mess...
+//            if constexpr (use_simd_binsearch_) {
+                auto buf = std::aligned_alloc(64, sizeof(Node));
+                Node* node = new(buf) Node();
+                return std::unique_ptr<Node>(node);
+//            } else {
+//                auto buf = alloc_.allocate(sizeof(Node));
+//                Node* node = new(buf) Node();
+//                return nodeptr_type(node, deleter_type(alloc_));
+//            }
+        } else {
+            return std::make_unique<Node>();
+        }
+    }
+
+    static Node *rightmost_leaf(Node *curr) noexcept {
+        while (curr && !curr->is_leaf()) {
+            curr = curr->children_[std::ssize(curr->children_) - 1].get();
+        }
+        return curr;
+    }
+
+    static const Node *rightmost_leaf(const Node *curr) noexcept {
+        while (curr && !curr->is_leaf()) {
+            curr = curr->children_[std::ssize(curr->children_) - 1].get();
+        }
+        return curr;
+    }
+
+    static Node *leftmost_leaf(Node *curr) noexcept {
+        while (curr && !curr->is_leaf()) {
+            curr = curr->children_[0].get();
+        }
+        return curr;
+    }
+
+    static const Node *leftmost_leaf(const Node *curr) noexcept {
+        while (curr && !curr->is_leaf()) {
+            curr = curr->children_[0].get();
+        }
+        return curr;
+    }
+};
+
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, typename Alloc>
 requires(Fanout >= 2) class BTreeBase {
-  // invariant: V is either K or pair<const K, Value> for some Value type.
-  static constexpr bool is_set_ = std::is_same_v<K, V>;
-
-  static constexpr bool is_disk_ = DiskAllocable<V>;
-
-  static constexpr auto disk_max_nkeys =
-      static_cast<std::size_t>(2 * Fanout - 1);
-
-  static constexpr bool use_linsearch_ =
-      std::is_arithmetic_v<K> && (Fanout <= 128);
-
-  struct Node {
-    using keys_type =
-        std::conditional_t<is_disk_, std::array<V, disk_max_nkeys>,
-                           std::vector<V>>;
-
-    // invariant: except root, t - 1 <= #(key) <= 2 * t - 1
-    // invariant: for root, 0 <= #(key) <= 2 * t - 1
-    // invariant: keys are sorted
-    // invariant: for internal nodes, t <= #(child) == (#(key) + 1)) <= 2 * t
-    // invariant: for root, 0 <= #(child) == (#(key) + 1)) <= 2 * t
-    // invariant: for leaves, 0 == #(child)
-    // invariant: child_0 <= key_0 <= child_1 <= ... <=  key_(N - 1) <= child_N
-    Node *parent_ = nullptr;
-    attr_t size_ = 0; // number of keys in the subtree (not keys in this node)
-    attr_t index_ = 0;
-    attr_t height_ = 0;
-    attr_t num_keys_ =
-        0; // number of keys in this node, used only for disk variant
-    keys_type keys_;
-    std::vector<std::conditional_t<is_disk_,
-                                   std::unique_ptr<Node, Deleter<Alloc, Node>>,
-                                   std::unique_ptr<Node>>>
-        children_;
-
-    // can throw bad_alloc
-    Node() requires(is_disk_) {}
-
-    Node() requires(!is_disk_) { keys_.reserve(disk_max_nkeys); }
-
-    Node(const Node &node) = delete;
-    Node &operator=(const Node &node) = delete;
-    Node(Node &&node) = delete;
-    Node &operator=(Node &&node) = delete;
-
-    void clone(const Node &other) {
-      alloc_ = other.alloc_;
-      keys_ = other.keys_;
-      size_ = other.size_;
-      if (!other.is_leaf()) {
-        assert(is_leaf());
-        for (attr_t i = 0; i < std::ssize(other.children_); ++i) {
-          children_.push_back(make_node());
-          children_[i]->clone(other.children_[i]);
-          children_[i]->parent_ = this;
-          children_[i]->index_ = i;
-          children_[i]->height_ = other.children_[i].height_;
-        }
-      }
-    }
-
-    [[nodiscard]] bool is_leaf() const noexcept { return children_.empty(); }
-
-    [[nodiscard]] bool is_full() const noexcept {
-      if constexpr (is_disk_) {
-        return num_keys_ == 2 * Fanout - 1;
-      } else {
-        return std::ssize(keys_) == 2 * Fanout - 1;
-      }
-    }
-
-    [[nodiscard]] bool can_take_key() const noexcept {
-      if constexpr (is_disk_) {
-        return num_keys_ > Fanout - 1;
-      } else {
-        return std::ssize(keys_) > Fanout - 1;
-      }
-    }
-
-    [[nodiscard]] bool has_minimal_keys() const noexcept {
-      if constexpr (is_disk_) {
-        return parent_ && num_keys_ == Fanout - 1;
-      } else {
-        return parent_ && std::ssize(keys_) == Fanout - 1;
-      }
-    }
-
-    [[nodiscard]] bool empty() const noexcept {
-      if constexpr (is_disk_) {
-        return num_keys_ == 0;
-      } else {
-        return keys_.empty();
-      }
-    }
-
-    void clear_keys() noexcept {
-      if constexpr (is_disk_) {
-        num_keys_ = 0;
-      } else {
-        keys_.clear();
-      }
-    }
-
-    [[nodiscard]] attr_t nkeys() const noexcept {
-      if constexpr (is_disk_) {
-        return num_keys_;
-      } else {
-        return static_cast<attr_t>(std::ssize(keys_));
-      }
-    }
-  };
-
-  struct BTreeNonConstIterTraits {
-    using difference_type = attr_t;
-    using value_type = V;
-    using pointer = V *;
-    using reference = V &;
-    using iterator_category = std::bidirectional_iterator_tag;
-    using iterator_concept = iterator_category;
-
-    static reference make_ref(value_type &val) noexcept { return val; }
-  };
-
-  struct BTreeConstIterTraits {
-    using difference_type = attr_t;
-    using value_type = V;
-    using pointer = const V *;
-    using reference = const V &;
-    using iterator_category = std::bidirectional_iterator_tag;
-    using iterator_concept = iterator_category;
-
-    static reference make_ref(const value_type &val) noexcept { return val; }
-  };
-
-  struct BTreeRefIterTraits {
-    using difference_type = attr_t;
-    using value_type = V;
-    using pointer = V *;
-    using reference = PairRefType<V>;
-    using iterator_category = std::bidirectional_iterator_tag;
-    using iterator_concept = iterator_category;
-
-    static reference make_ref(value_type &val) noexcept {
-      return {std::cref(val.first), std::ref(val.second)};
-    }
-  };
-
-  template <typename IterTraits> struct BTreeIterator {
-    using difference_type = IterTraits::difference_type;
-    using value_type = IterTraits::value_type;
-    using pointer = IterTraits::pointer;
-    using reference = IterTraits::reference;
-    using iterator_category = IterTraits::iterator_category;
-    using iterator_concept = IterTraits::iterator_concept;
-
-    Node *node_ = nullptr;
-    attr_t index_;
-
-    BTreeIterator() noexcept = default;
-
-    BTreeIterator(Node *node, attr_t i) noexcept : node_{node}, index_{i} {
-      assert(node_ && i >= 0 && i <= node_->nkeys());
-    }
-
-    template <typename IterTraitsOther>
-    BTreeIterator(const BTreeIterator<IterTraitsOther> &other) noexcept
-        : BTreeIterator(other.node_, other.index_) {}
-
-    reference operator*() const noexcept {
-      return IterTraits::make_ref(node_->keys_[index_]);
-    }
-
-    pointer operator->() const noexcept { return &(node_->keys_[index_]); }
-
-    // useful remark:
-    // incrementing/decrementing iterator in an internal node will always
-    // produce an iterator in a leaf node,
-    // incrementing/decrementing iterator in a leaf node will always produce
-    // an iterator in a leaf node for non-boundary keys,
-    // an iterator in an internal node for boundary keys
-
-    void climb() noexcept {
-      while (node_->parent_ && index_ == node_->nkeys()) {
-        index_ = node_->index_;
-        node_ = node_->parent_;
-      }
-    }
-
-    void increment() noexcept {
-      // we don't do past to end() check for efficiency
-      if (!node_->is_leaf()) {
-        node_ = leftmost_leaf(node_->children_[index_ + 1].get());
-        index_ = 0;
-      } else {
-        ++index_;
-        while (node_->parent_ && index_ == node_->nkeys()) {
-          index_ = node_->index_;
-          node_ = node_->parent_;
-        }
-      }
-    }
-
-    void decrement() noexcept {
-      if (!node_->is_leaf()) {
-        node_ = rightmost_leaf(node_->children_[index_].get());
-        index_ = node_->nkeys() - 1;
-      } else if (index_ > 0) {
-        --index_;
-      } else {
-        while (node_->parent_ && node_->index_ == 0) {
-          node_ = node_->parent_;
-        }
-        if (node_->index_ > 0) {
-          index_ = node_->index_ - 1;
-          node_ = node_->parent_;
-        }
-      }
-    }
-
-    bool verify() noexcept {
-      // Uncomment this line for testing
-      // assert(!node_->parent_ || (index_ < node_->nkeys()));
-      return true;
-    }
-
-    BTreeIterator &operator++() noexcept {
-      increment();
-      assert(verify());
-      return *this;
-    }
-
-    BTreeIterator operator++(int) noexcept {
-      BTreeIterator temp = *this;
-      increment();
-      assert(verify());
-      return temp;
-    }
-
-    BTreeIterator &operator--() noexcept {
-      decrement();
-      assert(verify());
-      return *this;
-    }
-
-    BTreeIterator operator--(int) noexcept {
-      BTreeIterator temp = *this;
-      decrement();
-      assert(verify());
-      return temp;
-    }
-
-    friend bool operator==(const BTreeIterator &x,
-                           const BTreeIterator &y) noexcept {
-      return x.node_ == y.node_ && x.index_ == y.index_;
-    }
-
-    friend bool operator!=(const BTreeIterator &x,
-                           const BTreeIterator &y) noexcept {
-      return !(x == y);
-    }
-  };
-
+  using Traits = BTreeTraits<K, V, Fanout, Comp, AllowDup, Alloc>;
 public:
-  using key_type = K;
-  using value_type = V;
-  using reference_type = std::conditional_t<is_set_, const V &, PairRefType<V>>;
-  using const_reference_type = const V &;
-  using node_type = Node;
-  using size_type = std::size_t;
-  using difference_type = attr_t;
-  using allocator_type = Alloc;
-  using deleter_type = Deleter<Alloc, Node>;
-  using nodeptr_type =
-      std::conditional_t<DiskAllocable<V>, std::unique_ptr<Node, deleter_type>,
-                         std::unique_ptr<Node>>;
-  using Proj =
-      std::conditional_t<is_set_, std::identity, Projection<const V &>>;
-  using ProjIter = std::conditional_t<is_set_, std::identity,
-                                      ProjectionIter<PairRefType<V>>>;
-
-  static_assert(
-      std::indirect_strict_weak_order<
-          Comp, std::projected<std::ranges::iterator_t<std::vector<V>>, Proj>>);
-
-  // invariant: K cannot be mutated
-  // so if V is K, uses a const iterator.
-  // if V is BTreePair<K, V>, uses a non-const iterator (but only value can
-  // be mutated)
+  static constexpr bool is_set_ = Traits::is_set_;
+  static constexpr bool is_pod_ = Traits::is_pod_;
+  static constexpr bool CompIsLess = Traits::CompIsLess;
+  static constexpr bool use_simd_binsearch_ = Traits::use_simd_binsearch_;
+  static constexpr std::size_t disk_max_nkeys = Traits::disk_max_nkeys;
+  using Node = Traits::Node;
+  using key_type = Traits::key_type;
+  using size_type = Traits::size_type;
+  using value_type = Traits::value_type;
+  using nodeptr_type = Traits::nodeptr_type;
 private:
-  using nonconst_iterator_type = BTreeIterator<BTreeNonConstIterTraits>;
-
+  using nonconst_iterator_type = Traits::nonconst_iterator_type;
 public:
-  using iterator_type = BTreeIterator<
-      std::conditional_t<is_set_, BTreeConstIterTraits, BTreeRefIterTraits>>;
-  using const_iterator_type = BTreeIterator<BTreeConstIterTraits>;
-  using reverse_iterator_type = std::reverse_iterator<iterator_type>;
-  using const_reverse_iterator_type =
-      std::reverse_iterator<const_iterator_type>;
+  using iterator_type = Traits::iterator_type;
+  using const_iterator_type = Traits::const_iterator_type;
+  using reverse_iterator_type = Traits::reverse_iterator_type;
+  using const_reverse_iterator_type = Traits::const_reverse_iterator_type;
+  using Proj = Traits::Proj;
+  using ProjIter = Traits::ProjIter;
 
 private:
-  [[no_unique_address]] Alloc alloc_;
+  [[no_unique_address]] Traits alloc_;
   nodeptr_type root_;
   const_iterator_type begin_;
 
-protected:
-  nodeptr_type make_node() {
-    if constexpr (is_disk_) {
-      auto buf = alloc_.allocate(sizeof(Node));
-      Node *node = new (buf) Node();
-      return nodeptr_type(node, deleter_type(alloc_));
-    } else {
-      return std::make_unique<Node>();
-    }
-  }
-
 public:
   BTreeBase(const Alloc &alloc = Alloc{})
-      : alloc_{alloc}, root_(make_node()), begin_{root_.get(), 0} {}
+      : alloc_{alloc}, root_(alloc_.make_node()), begin_{root_.get(), 0} {}
 
   BTreeBase(std::initializer_list<value_type> init,
             const Alloc &alloc = Alloc{})
@@ -458,20 +513,8 @@ public:
     }
   }
 
-  BTreeBase(const BTreeBase &other) {
-    alloc_ = other.alloc_;
-    if (other.root_) {
-      root_ = make_node();
-      root_->clone(*(other.root_));
-      root_->parent_ = nullptr;
-    }
-    begin_ = iterator_type(leftmost_leaf(root_.get()), 0);
-  }
-  BTreeBase &operator=(const BTreeBase &other) {
-    BTreeBase tree(other);
-    this->swap(tree);
-    return *this;
-  }
+  BTreeBase(const BTreeBase &other) = delete;
+  BTreeBase &operator=(const BTreeBase &other) = delete;
   BTreeBase(BTreeBase &&other) noexcept = default;
   BTreeBase &operator=(BTreeBase &&other) noexcept = default;
 
@@ -481,71 +524,76 @@ public:
     std::swap(begin_, other.begin_);
   }
 
-  bool verify(const Node *node) const {
-    // invariant: node never null
-    assert(node);
+    bool verify(const Node *node) const {
+        // invariant: node never null
+        assert(node);
 
-    // invariant: except root, t - 1 <= #(key) <= 2 * t - 1
-    assert(!node->parent_ ||
-           (node->nkeys() >= Fanout - 1 && node->nkeys() <= 2 * Fanout - 1));
+        // invariant: except root, t - 1 <= #(key) <= 2 * t - 1
+        assert(!node->parent_ ||
+               (node->nkeys() >= Fanout - 1 && node->nkeys() <= 2 * Fanout - 1));
 
-    // invariant: keys are sorted
-    assert(std::ranges::is_sorted(node->keys_.begin(),
-                                  node->keys_.begin() + node->nkeys(), Comp{},
-                                  Proj{}));
+        // invariant: keys are sorted
+        assert(std::ranges::is_sorted(node->keys_.begin(),
+                                      node->keys_.begin() + node->nkeys(), Comp{},
+                                      Proj{}));
 
-    // invariant: for internal nodes, t <= #(child) == (#(key) + 1)) <= 2 * t
-    assert(!node->parent_ || node->is_leaf() ||
-           (std::ssize(node->children_) >= Fanout &&
-            std::ssize(node->children_) == node->nkeys() + 1 &&
-            std::ssize(node->children_) <= 2 * Fanout));
+        // invariant: for internal nodes, t <= #(child) == (#(key) + 1)) <= 2 * t
+        assert(!node->parent_ || node->is_leaf() ||
+               (std::ssize(node->children_) >= Fanout &&
+                std::ssize(node->children_) == node->nkeys() + 1 &&
+                std::ssize(node->children_) <= 2 * Fanout));
 
-    // index check
-    assert(!node->parent_ ||
-           node == node->parent_->children_[node->index_].get());
+        // index check
+        assert(!node->parent_ ||
+               node == node->parent_->children_[node->index_].get());
 
-    // invariant: child_0 <= key_0 <= child_1 <= ... <=  key_(N - 1) <=
-    // child_N
-    if (!node->is_leaf()) {
-      auto num_keys = node->nkeys();
+        // invariant: child_0 <= key_0 <= child_1 <= ... <=  key_(N - 1) <=
+        // child_N
+        if (!node->is_leaf()) {
+            auto num_keys = node->nkeys();
 
-      for (attr_t i = 0; i < node->nkeys(); ++i) {
-        assert(node->children_[i]);
-        assert(!Comp{}(
-            Proj{}(node->keys_[i]),
-            Proj{}(
-                node->children_[i]->keys_[node->children_[i]->nkeys() - 1])));
-        assert(!Comp{}(Proj{}(node->children_[i + 1]->keys_[0]),
-                       Proj{}(node->keys_[i])));
-        // parent check
-        assert(node->children_[i]->parent_ == node);
-        // recursive check
-        assert(verify(node->children_[i].get()));
-        assert(node->height_ == node->children_[i]->height_ + 1);
-        num_keys += node->children_[i]->size_;
-      }
-      // parent check
-      assert(node->children_.back()->parent_ == node);
-      assert(verify(node->children_.back().get()));
-      assert(node->height_ == node->children_.back()->height_ + 1);
-      num_keys += node->children_.back()->size_;
-      assert(node->size_ == num_keys);
-    } else {
-      assert(node->size_ == node->nkeys());
-      assert(node->height_ == 0);
+            for (attr_t i = 0; i < node->nkeys(); ++i) {
+                assert(node->children_[i]);
+                assert(!Comp{}(
+                        Proj{}(node->keys_[i]),
+                        Proj{}(
+                                node->children_[i]->keys_[node->children_[i]->nkeys() - 1])));
+                assert(!Comp{}(Proj{}(node->children_[i + 1]->keys_[0]),
+                               Proj{}(node->keys_[i])));
+                // parent check
+                assert(node->children_[i]->parent_ == node);
+                // recursive check
+                assert(verify(node->children_[i].get()));
+                assert(node->height_ == node->children_[i]->height_ + 1);
+                num_keys += node->children_[i]->size_;
+            }
+            // parent check
+            assert(node->children_.back()->parent_ == node);
+            assert(verify(node->children_.back().get()));
+            assert(node->height_ == node->children_.back()->height_ + 1);
+            num_keys += node->children_.back()->size_;
+            assert(node->size_ == num_keys);
+        } else {
+            assert(node->size_ == node->nkeys());
+            assert(node->height_ == 0);
+        }
+
+        return true;
     }
-
-    return true;
-  }
 
   [[nodiscard]] bool verify() const {
     // Uncomment these lines for testing
-
-    // assert(begin_ == const_iterator_type(leftmost_leaf(root_.get()), 0));
-    // assert(verify(root_.get()));
+//     assert(begin_ == const_iterator_type(leftmost_leaf(root_.get()), 0));
+//     assert(verify(root_.get()));
     return true;
   }
 
+protected:
+    nodeptr_type make_node() {
+      return alloc_.make_node();
+  }
+
+public:
   [[nodiscard]] iterator_type begin() noexcept { return begin_; }
 
   [[nodiscard]] const_iterator_type begin() const noexcept {
@@ -607,7 +655,7 @@ protected:
 
 public:
   void clear() {
-    root_ = make_node();
+    root_ = alloc_.make_node();
     begin_ = iterator_type(root_.get(), 0);
   }
 
@@ -661,7 +709,7 @@ protected:
            parent->children_[node->index_ + 1]->can_take_key());
     auto sibling = parent->children_[node->index_ + 1].get();
 
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       node->keys_[node->num_keys_] = parent->keys_[node->index_];
       node->num_keys_++;
       parent->keys_[node->index_] = sibling->keys_[0];
@@ -709,7 +757,7 @@ protected:
     auto sibling = parent->children_[node->index_ + 1].get();
     assert(sibling->nkeys() >= (Fanout - 1) + n);
 
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       // brings one key from parent
       node->keys_[node->num_keys_] = parent->keys_[node->index_];
       node->num_keys_++;
@@ -771,7 +819,7 @@ protected:
            parent->children_[node->index_ - 1]->can_take_key());
     auto sibling = parent->children_[node->index_ - 1].get();
 
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memmove(node->keys_.data() + 1, node->keys_.data(),
                    node->num_keys_ * sizeof(V));
       node->num_keys_++;
@@ -819,7 +867,7 @@ protected:
     auto sibling = parent->children_[node->index_ - 1].get();
     assert(sibling->nkeys() >= (Fanout - 1) + n);
 
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memcpy(node->keys_.data() + node->num_keys_,
                   sibling->keys_.data() + (sibling->num_keys_ - n),
                   (n - 1) * sizeof(V));
@@ -882,24 +930,26 @@ protected:
     }
   }
 
-  auto get_lb_location(const K &key, const V *first,
+  auto get_lb(const K &key, const V *first,
                        const V *last) const noexcept {
-    auto lbcomp = [&key](const V &other) { return Comp{}(Proj{}(other), key); };
-    if constexpr (use_linsearch_) {
-      return std::distance(
-          first, std::ranges::find_if_not(first, last, lbcomp, Proj{}));
+    if constexpr (use_simd_binsearch_) {
+        return get_lb_simd<K, CompIsLess>(key, first, last);
     } else {
-      return std::distance(
-          first, std::ranges::lower_bound(first, last, key, Comp{}, Proj{}));
+        if constexpr (std::is_integral_v<K>) {
+            auto lbcomp = [&key](const V &other) { return Comp{}(Proj{}(other), key); };
+                return std::distance(
+                        first, std::ranges::find_if_not(first, last, lbcomp, Proj{}));
+        } else {
+            return std::distance(
+                    first, std::ranges::lower_bound(first, last, key, Comp{}, Proj{}));
+        }
     }
   }
 
-  auto get_ub_location(const K &key, const V *first,
+  auto get_ub(const K &key, const V *first,
                        const V *last) const noexcept {
-    auto ubcomp = [&key](const V &other) { return Comp{}(key, Proj{}(other)); };
-    if constexpr (use_linsearch_) {
-      return std::distance(first,
-                           std::ranges::find_if(first, last, ubcomp, Proj{}));
+    if constexpr (use_simd_binsearch_) {
+        return get_ub_simd<K, CompIsLess>(key, first, last);
     } else {
       return std::distance(
           first, std::ranges::upper_bound(first, last, key, Comp{}, Proj{}));
@@ -910,7 +960,7 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+          get_lb(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) { // equal? key found
         return const_iterator_type(x, static_cast<attr_t>(i));
       } else if (x->is_leaf()) { // no child, key is not in the tree
@@ -926,7 +976,7 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+          get_lb(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
         auto it = nonconst_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -944,7 +994,7 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+          get_lb(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
         auto it = const_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -962,7 +1012,7 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          get_ub_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+          get_ub(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
         auto it = nonconst_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -980,7 +1030,7 @@ protected:
     auto x = root_.get();
     while (x) {
       auto i =
-          get_ub_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+          get_ub(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
         auto it = const_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -1012,7 +1062,7 @@ protected:
     z->height_ = y->height_;
 
     // bring right t keys from y
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memcpy(z->keys_.data(), y->keys_.data() + Fanout,
                   (y->num_keys_ - Fanout) * sizeof(V));
       z->num_keys_ = y->num_keys_ - Fanout;
@@ -1043,7 +1093,7 @@ protected:
       child->index_++;
     }
 
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memmove(x->keys_.data() + i + 1, x->keys_.data() + i,
                    (x->num_keys_ - i) * sizeof(V));
       x->num_keys_++;
@@ -1067,7 +1117,7 @@ protected:
 
     auto immigrated_size = sibling->nkeys();
 
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       y->keys_[y->num_keys_] = x->keys_[i];
       y->num_keys_++;
       std::memcpy(y->keys_.data() + y->num_keys_, sibling->keys_.data(),
@@ -1094,7 +1144,7 @@ protected:
     // shift children from i + 1 left by 1 (because child[i + 1] is merged)
     std::shift_left(x->children_.begin() + i + 1, x->children_.end(), 1);
     x->children_.pop_back();
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memmove(x->keys_.data() + i, x->keys_.data() + i + 1,
                    (x->num_keys_ - (i + 1)) * sizeof(V));
       x->num_keys_--;
@@ -1161,7 +1211,7 @@ protected:
     assert(node && node->is_leaf() && !node->is_full());
     bool update_begin = (empty() || Comp{}(Proj{}(value), Proj{}(*begin_)));
 
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memmove(node->keys_.data() + i + 1, node->keys_.data() + i,
                    (node->num_keys_ - i) * sizeof(V));
       node->keys_[i] = std::forward<T>(value);
@@ -1190,7 +1240,7 @@ protected:
       AllowDup &&std::is_same_v<std::remove_cvref_t<T>, V>) {
     auto x = root_.get();
     while (true) {
-      auto i = get_ub_location(Proj{}(key), x->keys_.data(),
+      auto i = get_ub(Proj{}(key), x->keys_.data(),
                                x->keys_.data() + x->nkeys());
       if (x->is_leaf()) {
         return insert_leaf(x, static_cast<attr_t>(i), std::forward<T>(key));
@@ -1212,7 +1262,7 @@ protected:
                               std::is_same_v<std::remove_cvref_t<T>, V>) {
     auto x = root_.get();
     while (true) {
-      auto i = get_lb_location(Proj{}(key), x->keys_.data(),
+      auto i = get_lb(Proj{}(key), x->keys_.data(),
                                x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && Proj{}(key) == Proj{}(x->keys_[i])) {
         return {iterator_type(x, static_cast<attr_t>(i)), false};
@@ -1237,7 +1287,7 @@ protected:
     assert(node && i >= 0 && i < node->nkeys() && node->is_leaf() &&
            !node->has_minimal_keys());
     bool update_begin = (begin_ == const_iterator_type(node, i));
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memmove(node->keys_.data() + i, node->keys_.data() + i + 1,
                    (node->num_keys_ - (i + 1)) * sizeof(V));
       node->num_keys_--;
@@ -1262,7 +1312,7 @@ protected:
   size_t erase_lb(Node *x, const K &key) requires(!AllowDup) {
     while (true) {
       auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+          get_lb(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) {
         // key found
         assert(x->is_leaf() || i + 1 < std::ssize(x->children_));
@@ -1618,7 +1668,7 @@ public:
     auto x = root_.get();
     while (true) {
       auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+          get_lb(key, x->keys_.data(), x->keys_.data() + x->nkeys());
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) {
         return iterator_type(x, static_cast<attr_t>(i))->second;
       } else if (x->is_leaf()) {
@@ -1744,7 +1794,7 @@ private:
 
 public:
   friend std::istream &operator>>(std::istream &is,
-                                  BTreeBase &tree) requires(is_disk_) {
+                                  BTreeBase &tree) requires(is_pod_) {
     std::uint64_t tree_code = 0;
     if (!is.read(reinterpret_cast<char *>(&tree_code), sizeof(std::uint64_t))) {
       std::cerr << "Tree deserialization: begin code parse error\n";
@@ -1792,7 +1842,7 @@ public:
 protected:
   // preorder DFS traversal
   bool deserialize_node(std::istream &is, Node *node, attr_t node_index,
-                        attr_t node_height) requires(is_disk_) {
+                        attr_t node_height) requires(is_pod_) {
     assert(node);
     node->index_ = node_index;
     node->height_ = node_height;
@@ -1831,7 +1881,7 @@ protected:
 
 public:
   friend std::ostream &operator<<(std::ostream &os,
-                                  const BTreeBase &tree) requires(is_disk_) {
+                                  const BTreeBase &tree) requires(is_pod_) {
     std::uint64_t tree_code = begin_code;
     if (!os.write(reinterpret_cast<char *>(&tree_code),
                   sizeof(std::uint64_t))) {
@@ -1863,7 +1913,7 @@ public:
 protected:
   // preorder DFS traversal
   bool serialize_node(std::ostream &os, const Node *node) const
-      requires(is_disk_) {
+      requires(is_pod_) {
     assert(node);
     if (!os.write(reinterpret_cast<const char *>(&node->num_keys_),
                   sizeof(attr_t))) {
@@ -1923,7 +1973,7 @@ protected:
         assert(lroot->size_ == 0);
 
         if (il > 0) {
-          if constexpr (is_disk_) {
+          if constexpr (is_pod_) {
             std::memcpy(lroot->keys_.data(), xl->keys_.data(), il * sizeof(V));
             lroot->num_keys_ += il;
           } else {
@@ -1944,7 +1994,7 @@ protected:
 
           assert(slroot->size_ == 0);
 
-          if constexpr (is_disk_) {
+          if constexpr (is_pod_) {
             std::memcpy(slroot->keys_.data(), xl->keys_.data(),
                         (il - 1) * sizeof(V));
             slroot->num_keys_ += (il - 1);
@@ -1987,7 +2037,7 @@ protected:
 
         if (ir < xr->nkeys()) {
           auto immigrants = xr->nkeys() - ir;
-          if constexpr (is_disk_) {
+          if constexpr (is_pod_) {
             std::memcpy(rroot->keys_.data(), xr->keys_.data() + ir,
                         immigrants * sizeof(V));
             rroot->num_keys_ += immigrants;
@@ -2011,7 +2061,7 @@ protected:
           assert(srroot->size_ == 0);
 
           auto immigrants = xr->nkeys() - (ir + 1);
-          if constexpr (is_disk_) {
+          if constexpr (is_pod_) {
             std::memcpy(srroot->keys_.data(), xr->keys_.data() + (ir + 1),
                         immigrants * sizeof(V));
             srroot->num_keys_ += immigrants;
@@ -2097,7 +2147,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
   using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc>;
   using Node = Tree::node_type;
   using Proj = Tree::Proj;
-  constexpr bool is_disk_ = Tree::is_disk_;
+  constexpr bool is_pod_ = Tree::is_pod_;
 
   V mid_value{std::forward<T>(raw_value)};
   if ((!tree_left.empty() &&
@@ -2151,7 +2201,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
       auto new_root = tree_left.make_node();
       new_root->height_ = new_tree.root_->height_ + 1;
 
-      if constexpr (is_disk_) {
+      if constexpr (is_pod_) {
         new_root->keys_[new_root->num_keys_] = mid_value;
         new_root->num_keys_++;
       } else {
@@ -2173,7 +2223,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
       new_tree.promote_root_if_necessary();
       new_tree.root_->size_ = size_left + size_right + 1;
     } else {
-      if constexpr (is_disk_) {
+      if constexpr (is_pod_) {
         parent->keys_[parent->num_keys_] = mid_value;
         parent->num_keys_++;
       } else {
@@ -2227,7 +2277,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, Alloc> &&tree_left, T &&raw_value,
     assert(curr_height == height_left);
     auto parent = curr->parent_;
     assert(parent);
-    if constexpr (is_disk_) {
+    if constexpr (is_pod_) {
       std::memmove(parent->keys_.data() + 1, parent->keys_.data(),
                    parent->num_keys_ * sizeof(V));
       parent->keys_[0] = mid_value;
