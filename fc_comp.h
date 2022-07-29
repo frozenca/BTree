@@ -18,52 +18,60 @@ using regi = __m512i;
 using regf = __m512;
 using regd = __m512d;
 
-unsigned int cmp(std::int32_t key, const std::int32_t* key_ptr) {
-    regi key_broadcasted = _mm512_set1_epi32(key);
-    regi keys_to_comp = _mm512_load_si512(reinterpret_cast<const regi*>(key_ptr));
-    return _mm512_cmpgt_epi32_mask(key_broadcasted, keys_to_comp);
+regi broadcast(std::int32_t key) {
+    return _mm512_set1_epi32(key);
 }
 
-unsigned int cmp(std::int64_t key, const std::int64_t* key_ptr) {
-    regi key_broadcasted = _mm512_set1_epi64(key);
-    regi keys_to_comp = _mm512_load_si512(reinterpret_cast<const regi*>(key_ptr));
-    return _mm512_cmpgt_epi64_mask(key_broadcasted, keys_to_comp);
+regi broadcast(std::int64_t key) {
+    return _mm512_set1_epi64(key);
 }
 
-unsigned int cmp(float key, const float* key_ptr) {
-    regf key_broadcasted = _mm512_set1_ps(key);
+regf broadcast(float key) {
+    return _mm512_set1_ps(key);
+}
+
+regd broadcast(double key) {
+    return _mm512_set1_pd(key);
+}
+
+unsigned int cmp(regi key, const std::int32_t* key_ptr) {
+    regi keys_to_comp = _mm512_load_si512(reinterpret_cast<const regi*>(key_ptr));
+    return _mm512_cmpgt_epi32_mask(key, keys_to_comp);
+}
+
+unsigned int cmp(regi key, const std::int64_t* key_ptr) {
+    regi keys_to_comp = _mm512_load_si512(reinterpret_cast<const regi*>(key_ptr));
+    return _mm512_cmpgt_epi64_mask(key, keys_to_comp);
+}
+
+unsigned int cmp(regf key, const float* key_ptr) {
     regf keys_to_comp = _mm512_load_ps(key_ptr);
-    return _mm512_cmp_ps_mask(key_broadcasted, keys_to_comp, _MM_CMPINT_GT);
+    return _mm512_cmp_ps_mask(key, keys_to_comp, _MM_CMPINT_GT);
 }
 
-unsigned int cmp(double key, const double* key_ptr) {
-    regd key_broadcasted = _mm512_set1_pd(key);
+unsigned int cmp(regd key, const double* key_ptr) {
     regd keys_to_comp = _mm512_load_pd(key_ptr);
-    return _mm512_cmp_pd_mask(key_broadcasted, keys_to_comp, _MM_CMPINT_GT);
+    return _mm512_cmp_pd_mask(key, keys_to_comp, _MM_CMPINT_GT);
 }
 
-unsigned int cmp(const std::int32_t* key_ptr, std::int32_t key) {
-    regi key_broadcasted = _mm512_set1_epi32(key);
+unsigned int cmp(const std::int32_t* key_ptr, regi key) {
     regi keys_to_comp = _mm512_load_si512(reinterpret_cast<const regi*>(key_ptr));
-    return _mm512_cmpgt_epi32_mask(keys_to_comp, key_broadcasted);
+    return _mm512_cmpgt_epi32_mask(keys_to_comp, key);
 }
 
-unsigned int cmp(const std::int64_t* key_ptr, std::int64_t key) {
-    regi key_broadcasted = _mm512_set1_epi64(key);
+unsigned int cmp(const std::int64_t* key_ptr, regi key) {
     regi keys_to_comp = _mm512_load_si512(reinterpret_cast<const regi*>(key_ptr));
-    return _mm512_cmpgt_epi64_mask(keys_to_comp, key_broadcasted);
+    return _mm512_cmpgt_epi64_mask(keys_to_comp, key);
 }
 
-unsigned int cmp(const float* key_ptr, float key) {
-    regf key_broadcasted = _mm512_set1_ps(key);
+unsigned int cmp(const float* key_ptr, regf key) {
     regf keys_to_comp = _mm512_load_ps(key_ptr);
-    return _mm512_cmp_ps_mask(keys_to_comp, key_broadcasted, _MM_CMPINT_GT);
+    return _mm512_cmp_ps_mask(keys_to_comp, key, _MM_CMPINT_GT);
 }
 
-unsigned int cmp(const double* key_ptr, double key) {
-    regd key_broadcasted = _mm512_set1_pd(key);
+unsigned int cmp(const double* key_ptr, regd key) {
     regd keys_to_comp = _mm512_load_pd(key_ptr);
-    return _mm512_cmp_pd_mask(keys_to_comp, key_broadcasted, _MM_CMPINT_GT);
+    return _mm512_cmp_pd_mask(keys_to_comp, key, _MM_CMPINT_GT);
 }
 
 template <CanUseSimd K>
@@ -83,16 +91,17 @@ inline std::int32_t get_lb_simd(K key, const K* first, const K* last) {
     std::int32_t i = 0;
     int mask = 0;
     auto half = (len >> (SimdTrait<K>::shift + 1)) << SimdTrait<K>::shift;
+    auto key_broadcast = broadcast(key);
     while (len > SimdTrait<K>::unit) {
         len -= half;
         auto next_half = (len >> (SimdTrait<K>::shift + 1)) << SimdTrait<K>::shift;
-        __builtin_prefetch(curr + next_half - SimdTrait<K>::unit);
-        __builtin_prefetch(curr + half + next_half - SimdTrait<K>::unit);
+//        __builtin_prefetch(curr + next_half - SimdTrait<K>::unit);
+//        __builtin_prefetch(curr + half + next_half - SimdTrait<K>::unit);
         auto mid = curr + half - SimdTrait<K>::unit;
         if constexpr (less) {
-            mask = ~cmp(key, mid);
+            mask = ~cmp(key_broadcast, mid);
         } else {
-            mask = ~cmp(mid, key);
+            mask = ~cmp(mid, key_broadcast);
         }
         i = __builtin_ffs(mask) - 1;
         curr += (i == SimdTrait<K>::unit) * half;
@@ -102,9 +111,9 @@ inline std::int32_t get_lb_simd(K key, const K* first, const K* last) {
         half = next_half;
     }
     if constexpr (less) {
-        mask = ~cmp(key, curr);
+        mask = ~cmp(key_broadcast, curr);
     } else {
-        mask = ~cmp(curr, key);
+        mask = ~cmp(curr, key_broadcast);
     }
     i = __builtin_ffs(mask) - 1;
     return std::min(static_cast<std::int32_t>(last - first), static_cast<std::int32_t>(curr - first) + i);
