@@ -6,6 +6,9 @@
 
 #if FC_USE_SIMD
 #include "fc_comp.h"
+#ifdef _MSC_VER
+#pragma warning(disable : 4324)
+#endif // MSC_VER
 #endif // FC_USE_SIMD
 #include <algorithm>
 #include <array>
@@ -173,7 +176,11 @@ requires(Fanout >= 2) class BTreeBase {
       false;
 #endif // FC_USE_SIMD
 
+#if FC_USE_SIMD
   struct alignas(64) Node {
+#else
+  struct Node {
+#endif // FC_USE_SIND
     using keys_type =
         std::conditional_t<is_disk_, std::array<V, disk_max_nkeys>,
                            std::vector<V>>;
@@ -908,9 +915,7 @@ protected:
       return get_lb_simd<K, CompIsLess>(key, x->keys_.data(),
                                         x->keys_.data() + 2 * Fanout);
     } else if constexpr (use_linsearch_) {
-      auto lbcomp = [&key](const V &other) {
-        return Comp{}(Proj{}(other), key);
-      };
+      auto lbcomp = [&key](const K &other) { return Comp{}(other, key); };
       return std::distance(
           x->keys_.begin(),
           std::ranges::find_if_not(
@@ -928,9 +933,7 @@ protected:
       return get_ub_simd<K, CompIsLess>(key, x->keys_.data(),
                                         x->keys_.data() + 2 * Fanout);
     } else if constexpr (use_linsearch_) {
-      auto ubcomp = [&key](const V &other) {
-        return Comp{}(key, Proj{}(other));
-      };
+      auto ubcomp = [&key](const K &other) { return Comp{}(key, other); };
       return std::distance(x->keys_.begin(),
                            std::ranges::find_if(x->keys_.begin(),
                                                 x->keys_.begin() + x->nkeys(),
