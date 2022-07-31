@@ -186,6 +186,25 @@ Time to lookup 1000000 elements: Average : 235.204ms, Stdev   : 11.8999ms, 95%  
 Time to erase 1000000 elements: Average : 250.782ms, Stdev   : 12.1752ms, 95%     : 270.575ms,
 ```
 
+For 1 million ```std::string```s with length 1~50, I see the following results in my machine:
+```
+frozenca::BTreeSet test (fanout 64 - default, std::string)
+Time to insert 1000000 elements: Average : 1519.62ms, Stdev   : 81.3793ms, 95%     : 1685.13ms,
+Time to lookup 1000000 elements: Average : 1188.33ms, Stdev   : 83.8154ms, 95%     : 1392.47ms,
+Time to erase 1000000 elements: Average : 1570.44ms, Stdev   : 93.771ms, 95%     : 1747.73ms,
+
+frozenca::BTreeSet test (fanout 128, std::string)
+Time to insert 1000000 elements: Average : 1774.12ms, Stdev   : 41.601ms, 95%     : 1812.62ms,
+Time to lookup 1000000 elements: Average : 1089.02ms, Stdev   : 22.8206ms, 95%     : 1127.83ms,
+Time to erase 1000000 elements: Average : 1670.09ms, Stdev   : 24.2791ms, 95%     : 1711.33ms,
+
+std::set test (std::string)
+Time to insert 1000000 elements: Average : 1662.92ms, Stdev   : 178.644ms, 95%     : 1861.37ms,
+Time to lookup 1000000 elements: Average : 1666.16ms, Stdev   : 127.095ms, 95%     : 1845.49ms,
+Time to erase 1000000 elements: Average : 1639.79ms, Stdev   : 82.7256ms, 95%     : 1770.9ms,
+```
+
+
 ## Sanity check and unit test
 
 If you want to contribute and test the code, please uncomment these lines, which will do full sanity checks on the entire tree:
