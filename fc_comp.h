@@ -83,40 +83,26 @@ struct SimdTrait {
 
 template <CanUseSimd K, bool less>
 inline std::int32_t get_lb_simd(K key, const K* first, const K* last) {
-    auto len = static_cast<std::int32_t>(last - first);
-    // make to the least multiple of SimdUnit which is at least len
-    len = ((len >> SimdTrait<K>::shift) + ((len & SimdTrait<K>::mask) ? 1 : 0)) << SimdTrait<K>::shift;
-
+    const auto len = static_cast<std::int32_t>(last - first);
     const K* curr = first;
+    auto key_broadcast = broadcast(key);
     std::int32_t i = 0;
     int mask = 0;
-    auto half = (len >> (SimdTrait<K>::shift + 1)) << SimdTrait<K>::shift;
-    auto key_broadcast = broadcast(key);
-    while (len > SimdTrait<K>::unit) {
-        len -= half;
-        auto next_half = (len >> (SimdTrait<K>::shift + 1)) << SimdTrait<K>::shift;
-//        __builtin_prefetch(curr + next_half - SimdTrait<K>::unit);
-//        __builtin_prefetch(curr + half + next_half - SimdTrait<K>::unit);
-        auto mid = curr + half - SimdTrait<K>::unit;
+    int offset = 0;
+    while (offset < len) {
         if constexpr (less) {
-            mask = ~cmp(key_broadcast, mid);
+            mask = ~cmp(key_broadcast, curr);
         } else {
-            mask = ~cmp(mid, key_broadcast);
+            mask = ~cmp(curr, key_broadcast);
         }
         i = __builtin_ffs(mask) - 1;
-        curr += (i == SimdTrait<K>::unit) * half;
-        if (i & SimdTrait<K>::mask) {
-            return static_cast<std::int32_t>(mid - first) + i;
+        if (i < SimdTrait<K>::unit) {
+            return offset + i;
         }
-        half = next_half;
+        curr += SimdTrait<K>::unit;
+        offset += SimdTrait<K>::unit;
     }
-    if constexpr (less) {
-        mask = ~cmp(key_broadcast, curr);
-    } else {
-        mask = ~cmp(curr, key_broadcast);
-    }
-    i = __builtin_ffs(mask) - 1;
-    return std::min(static_cast<std::int32_t>(last - first), static_cast<std::int32_t>(curr - first) + i);
+    return len;
 }
 
 template <CanUseSimd K, bool less>
