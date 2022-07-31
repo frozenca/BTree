@@ -145,25 +145,30 @@ Using a performance test code similar with ```test/perftest.cpp```, that inserts
 ```
 Balanced tree test
 Warming up complete...
-frozenca::BTreeSet test (fanout 64 - default value)
-Time to insert 1000000 elements: Average : 202.216ms, Stdev   : 10.9966ms, 95%     : 216.97ms,
-Time to lookup 1000000 elements: Average : 207.361ms, Stdev   : 8.55394ms, 95%     : 220.117ms,
-Time to erase 1000000 elements: Average : 234.124ms, Stdev   : 10.8369ms, 95%     : 247.901ms,
+frozenca::BTreeSet test (fanout 64 - default, SIMD)
+Time to insert 1000000 elements: Average : 175.547ms, Stdev   : 8.65575ms, 95%     : 189.553ms,
+Time to lookup 1000000 elements: Average : 197.75ms, Stdev   : 7.75456ms, 95%     : 208.783ms,
+Time to erase 1000000 elements: Average : 211.274ms, Stdev   : 10.3499ms, 95%     : 225.221ms,
 
-frozenca::DiskBTreeSet test (fanout 64 - default value)
-Time to insert 1000000 elements: Average : 240.147ms, Stdev   : 33.0533ms, 95%     : 292.272ms,
-Time to lookup 1000000 elements: Average : 237.027ms, Stdev   : 22.5066ms, 95%     : 285.335ms,
-Time to erase 1000000 elements: Average : 276.275ms, Stdev   : 38.9716ms, 95%     : 358.435ms,
+frozenca::BTreeSet test (fanout 96, SIMD)
+Time to insert 1000000 elements: Average : 176.432ms, Stdev   : 9.12931ms, 95%     : 192.688ms,
+Time to lookup 1000000 elements: Average : 194.997ms, Stdev   : 11.3563ms, 95%     : 205.048ms,
+Time to erase 1000000 elements: Average : 212.86ms, Stdev   : 11.3598ms, 95%     : 228.145ms,
 
-frozenca::BTreeSet test (fanout 256)
-Time to insert 1000000 elements: Average : 262.055ms, Stdev   : 26.0347ms, 95%     : 330.681ms,
-Time to lookup 1000000 elements: Average : 266.427ms, Stdev   : 26.0337ms, 95%     : 321.279ms,
-Time to erase 1000000 elements: Average : 290.647ms, Stdev   : 24.9697ms, 95%     : 348.26ms,
+frozenca::DiskBTreeSet test (fanout 128, SIMD)
+Time to insert 1000000 elements: Average : 187.797ms, Stdev   : 8.69872ms, 95%     : 202.318ms,
+Time to lookup 1000000 elements: Average : 200.799ms, Stdev   : 7.10905ms, 95%     : 211.436ms,
+Time to erase 1000000 elements: Average : 216.105ms, Stdev   : 6.83771ms, 95%     : 228.9ms,
 
-frozenca::DiskBTreeSet test (fanout 256)
-Time to insert 1000000 elements: Average : 259.554ms, Stdev   : 15.044ms, 95%     : 284.4ms,
-Time to lookup 1000000 elements: Average : 270.285ms, Stdev   : 20.2705ms, 95%     : 291.529ms,
-Time to erase 1000000 elements: Average : 290.788ms, Stdev   : 14.4526ms, 95%     : 318.84ms,
+frozenca::BTreeSet test (fanout 128, SIMD)
+Time to insert 1000000 elements: Average : 189.536ms, Stdev   : 15.3073ms, 95%     : 221.393ms,
+Time to lookup 1000000 elements: Average : 204.741ms, Stdev   : 17.8811ms, 95%     : 232.494ms,
+Time to erase 1000000 elements: Average : 219.17ms, Stdev   : 20.6449ms, 95%     : 244.232ms,
+
+frozenca::BTreeSet test (fanout 64, uint64, don't use SIMD)
+Time to insert 1000000 elements: Average : 204.187ms, Stdev   : 57.3915ms, 95%     : 222.939ms,
+Time to lookup 1000000 elements: Average : 221.049ms, Stdev   : 25.3429ms, 95%     : 245.708ms,
+Time to erase 1000000 elements: Average : 249.832ms, Stdev   : 52.1106ms, 95%     : 288.095ms,
 
 std::set test
 Time to insert 1000000 elements: Average : 907.104ms, Stdev   : 43.7566ms, 95%     : 966.12ms,
