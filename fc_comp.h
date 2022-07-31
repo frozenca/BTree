@@ -115,7 +115,7 @@ inline std::int32_t get_ub_simd(K key, const K *first, const K *last) {
       mask = cmp(key_broadcast, curr);
     }
     auto i = __builtin_ffs(mask) - 1;
-    if (i > 0) {
+    if (i > -1) {
       return offset + i;
     }
     curr += SimdTrait<K>::unit;
