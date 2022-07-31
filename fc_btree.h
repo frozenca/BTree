@@ -196,7 +196,7 @@ requires(Fanout >= 2) class BTreeBase {
                                    std::unique_ptr<Node>>>
         children_;
 
-    Node() { keys_.reserve(disk_max_nkeys); }
+    Node() = default;
 
     // can throw bad_alloc
     Node() requires(is_disk_) {
