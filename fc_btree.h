@@ -1,7 +1,12 @@
 #ifndef __FC_BTREE_H__
 #define __FC_BTREE_H__
 
+#define FC_USE_SIMD 0
+#define FC_PREFER_BINARY_SEARCH 0
+
+#if FC_USE_SIMD
 #include "fc_comp.h"
+#endif // FC_USE_SIMD
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -12,6 +17,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <ranges>
 #include <span>
@@ -19,8 +25,6 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-
-#define FC_PREFER_BINARY_SEARCH 0
 
 namespace frozenca {
 
@@ -137,7 +141,7 @@ requires(Fanout >= 2) class BTreeBase {
     Deleter(const Alloc &alloc) : alloc_{alloc} {}
 
     template <typename T> void operator()(T *node) noexcept {
-      alloc_.deallocate(node, sizeof(T));
+      alloc_.deallocate(node, 1);
     }
   };
 
@@ -146,8 +150,7 @@ requires(Fanout >= 2) class BTreeBase {
 
   static constexpr bool is_disk_ = DiskAllocable<V>;
 
-  static constexpr auto disk_max_nkeys =
-      static_cast<std::size_t>(2 * Fanout - 1);
+  static constexpr auto disk_max_nkeys = static_cast<std::size_t>(2 * Fanout);
 
   static constexpr bool use_linsearch_ =
 #if FC_PREFER_BINARY_SEARCH
@@ -155,6 +158,20 @@ requires(Fanout >= 2) class BTreeBase {
 #else
       std::is_arithmetic_v<K> && (Fanout <= 128);
 #endif // FC_PREFER_BINARY_SEARCH
+
+  static constexpr bool CompIsLess = std::is_same_v<Comp, std::ranges::less> ||
+                                     std::is_same_v<Comp, std::less<K>>;
+  static constexpr bool CompIsGreater =
+      std::is_same_v<Comp, std::ranges::greater> ||
+      std::is_same_v<Comp, std::greater<K>>;
+
+  static constexpr bool use_simd_ =
+#if FC_USE_SIMD
+      is_set_ && CanUseSimd<K> && (Fanout % (sizeof(K) == 4 ? 8 : 4) == 0) &&
+      (Fanout <= 128) && (CompIsLess || CompIsGreater);
+#else
+      false;
+#endif // FC_USE_SIMD
 
   struct alignas(64) Node {
     using keys_type =
@@ -168,21 +185,25 @@ requires(Fanout >= 2) class BTreeBase {
     // invariant: for root, 0 <= #(child) == (#(key) + 1)) <= 2 * t
     // invariant: for leaves, 0 == #(child)
     // invariant: child_0 <= key_0 <= child_1 <= ... <=  key_(N - 1) <= child_N
+    keys_type keys_;
     Node *parent_ = nullptr;
     attr_t size_ = 0; // number of keys in the subtree (not keys in this node)
     attr_t index_ = 0;
     attr_t height_ = 0;
     attr_t num_keys_ =
         0; // number of keys in this node, used only for disk variant
-    keys_type keys_;
     std::vector<std::conditional_t<is_disk_, std::unique_ptr<Node, Deleter>,
                                    std::unique_ptr<Node>>>
         children_;
 
-    // can throw bad_alloc
-    Node() requires(is_disk_) {}
+    Node() { keys_.reserve(disk_max_nkeys); }
 
-    Node() requires(!is_disk_) { keys_.reserve(disk_max_nkeys); }
+    // can throw bad_alloc
+    Node() requires(is_disk_) {
+      if constexpr (use_simd_) {
+        keys_.fill(std::numeric_limits<K>::max());
+      }
+    }
 
     Node(const Node &node) = delete;
     Node &operator=(const Node &node) = delete;
@@ -653,6 +674,9 @@ protected:
       std::memmove(sibling->keys_.data(), sibling->keys_.data() + 1,
                    (sibling->num_keys_ - 1) * sizeof(V));
       sibling->num_keys_--;
+      if constexpr (use_simd_) {
+        sibling->keys_[sibling->num_keys_] = std::numeric_limits<K>::max();
+      }
     } else {
       node->keys_.push_back(std::move(parent->keys_[node->index_]));
       parent->keys_[node->index_] = std::move(sibling->keys_.front());
@@ -706,6 +730,12 @@ protected:
       std::memmove(sibling->keys_.data(), sibling->keys_.data() + n,
                    (sibling->num_keys_ - n) * sizeof(V));
       sibling->num_keys_ -= n;
+      if constexpr (use_simd_) {
+        for (attr_t k = 0; k < n; ++k) {
+          sibling->keys_[sibling->num_keys_ + k] =
+              std::numeric_limits<K>::max();
+        }
+      }
     } else {
       // brings one key from parent
       node->keys_.push_back(std::move(parent->keys_[node->index_]));
@@ -763,6 +793,9 @@ protected:
       node->keys_[0] = parent->keys_[node->index_ - 1];
       parent->keys_[node->index_ - 1] = sibling->keys_[sibling->num_keys_ - 1];
       sibling->num_keys_--;
+      if constexpr (use_simd_) {
+        sibling->keys_[sibling->num_keys_] = std::numeric_limits<K>::max();
+      }
     } else {
       node->keys_.insert(node->keys_.begin(),
                          std::move(parent->keys_[node->index_ - 1]));
@@ -818,6 +851,9 @@ protected:
           std::make_reverse_iterator(node->keys_.begin() + node->num_keys_ - n),
           node->keys_.rend());
       sibling->num_keys_ -= n;
+      if constexpr (use_simd_) {
+        sibling->keys_[sibling->num_keys_] = std::numeric_limits<K>::max();
+      }
     } else {
       // brings n - 1 keys from sibling
       std::ranges::move(sibling->keys_ |
@@ -867,35 +903,50 @@ protected:
     }
   }
 
-  auto get_lb_location(const K &key, const V *first,
-                       const V *last) const noexcept {
-    auto lbcomp = [&key](const V &other) { return Comp{}(Proj{}(other), key); };
-    if constexpr (use_linsearch_) {
+  auto get_lb(const K &key, const Node *x) const noexcept {
+    if constexpr (use_simd_) {
+      return get_lb_simd<K, CompIsLess>(key, x->keys_.data(),
+                                        x->keys_.data() + 2 * Fanout);
+    } else if constexpr (use_linsearch_) {
+      auto lbcomp = [&key](const V &other) {
+        return Comp{}(Proj{}(other), key);
+      };
       return std::distance(
-          first, std::ranges::find_if_not(first, last, lbcomp, Proj{}));
+          x->keys_.begin(),
+          std::ranges::find_if_not(
+              x->keys_.begin(), x->keys_.begin() + x->nkeys(), lbcomp, Proj{}));
     } else {
-      return std::distance(
-          first, std::ranges::lower_bound(first, last, key, Comp{}, Proj{}));
+      return std::distance(x->keys_.begin(),
+                           std::ranges::lower_bound(
+                               x->keys_.begin(), x->keys_.begin() + x->nkeys(),
+                               key, Comp{}, Proj{}));
     }
   }
 
-  auto get_ub_location(const K &key, const V *first,
-                       const V *last) const noexcept {
-    auto ubcomp = [&key](const V &other) { return Comp{}(key, Proj{}(other)); };
-    if constexpr (use_linsearch_) {
-      return std::distance(first,
-                           std::ranges::find_if(first, last, ubcomp, Proj{}));
+  auto get_ub(const K &key, const Node *x) const noexcept {
+    if constexpr (use_simd_) {
+      return get_ub_simd<K, CompIsLess>(key, x->keys_.data(),
+                                        x->keys_.data() + 2 * Fanout);
+    } else if constexpr (use_linsearch_) {
+      auto ubcomp = [&key](const V &other) {
+        return Comp{}(key, Proj{}(other));
+      };
+      return std::distance(x->keys_.begin(),
+                           std::ranges::find_if(x->keys_.begin(),
+                                                x->keys_.begin() + x->nkeys(),
+                                                ubcomp, Proj{}));
     } else {
-      return std::distance(
-          first, std::ranges::upper_bound(first, last, key, Comp{}, Proj{}));
+      return std::distance(x->keys_.begin(),
+                           std::ranges::upper_bound(
+                               x->keys_.begin(), x->keys_.begin() + x->nkeys(),
+                               key, Comp{}, Proj{}));
     }
   }
 
   const_iterator_type search(const K &key) const {
     auto x = root_.get();
     while (x) {
-      auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+      auto i = get_lb(key, x);
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) { // equal? key found
         return const_iterator_type(x, static_cast<attr_t>(i));
       } else if (x->is_leaf()) { // no child, key is not in the tree
@@ -910,8 +961,7 @@ protected:
   nonconst_iterator_type find_lower_bound(const K &key, bool climb = true) {
     auto x = root_.get();
     while (x) {
-      auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+      auto i = get_lb(key, x);
       if (x->is_leaf()) {
         auto it = nonconst_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -928,8 +978,7 @@ protected:
   const_iterator_type find_lower_bound(const K &key, bool climb = true) const {
     auto x = root_.get();
     while (x) {
-      auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+      auto i = get_lb(key, x);
       if (x->is_leaf()) {
         auto it = const_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -946,8 +995,7 @@ protected:
   nonconst_iterator_type find_upper_bound(const K &key, bool climb = true) {
     auto x = root_.get();
     while (x) {
-      auto i =
-          get_ub_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+      auto i = get_ub(key, x);
       if (x->is_leaf()) {
         auto it = nonconst_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -964,8 +1012,7 @@ protected:
   const_iterator_type find_upper_bound(const K &key, bool climb = true) const {
     auto x = root_.get();
     while (x) {
-      auto i =
-          get_ub_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+      auto i = get_ub(key, x);
       if (x->is_leaf()) {
         auto it = const_iterator_type(x, static_cast<attr_t>(i));
         if (climb) {
@@ -1034,6 +1081,11 @@ protected:
       x->num_keys_++;
       x->keys_[i] = y->keys_[Fanout - 1];
       y->num_keys_ = Fanout - 1;
+      if constexpr (use_simd_) {
+        for (attr_t k = Fanout - 1; k < 2 * Fanout; ++k) {
+          y->keys_[k] = std::numeric_limits<K>::max();
+        }
+      }
     } else {
       x->keys_.insert(x->keys_.begin() + i, std::move(y->keys_[Fanout - 1]));
       y->keys_.resize(Fanout - 1);
@@ -1083,6 +1135,9 @@ protected:
       std::memmove(x->keys_.data() + i, x->keys_.data() + i + 1,
                    (x->num_keys_ - (i + 1)) * sizeof(V));
       x->num_keys_--;
+      if constexpr (use_simd_) {
+        x->keys_[x->num_keys_] = std::numeric_limits<K>::max();
+      }
     } else {
       // shift keys from i left by 1 (because key[i] is merged)
       std::shift_left(x->keys_.begin() + i, x->keys_.end(), 1);
@@ -1175,8 +1230,7 @@ protected:
       AllowDup &&std::is_same_v<std::remove_cvref_t<T>, V>) {
     auto x = root_.get();
     while (true) {
-      auto i = get_ub_location(Proj{}(key), x->keys_.data(),
-                               x->keys_.data() + x->nkeys());
+      auto i = get_ub(Proj{}(key), x);
       if (x->is_leaf()) {
         return insert_leaf(x, static_cast<attr_t>(i), std::forward<T>(key));
       } else {
@@ -1197,8 +1251,7 @@ protected:
                               std::is_same_v<std::remove_cvref_t<T>, V>) {
     auto x = root_.get();
     while (true) {
-      auto i = get_lb_location(Proj{}(key), x->keys_.data(),
-                               x->keys_.data() + x->nkeys());
+      auto i = get_lb(Proj{}(key), x);
       if (i < x->nkeys() && Proj{}(key) == Proj{}(x->keys_[i])) {
         return {iterator_type(x, static_cast<attr_t>(i)), false};
       } else if (x->is_leaf()) {
@@ -1226,6 +1279,9 @@ protected:
       std::memmove(node->keys_.data() + i, node->keys_.data() + i + 1,
                    (node->num_keys_ - (i + 1)) * sizeof(V));
       node->num_keys_--;
+      if constexpr (use_simd_) {
+        node->keys_[node->num_keys_] = std::numeric_limits<K>::max();
+      }
     } else {
       std::shift_left(node->keys_.begin() + i, node->keys_.end(), 1);
       node->keys_.pop_back();
@@ -1246,8 +1302,7 @@ protected:
 
   size_t erase_lb(Node *x, const K &key) requires(!AllowDup) {
     while (true) {
-      auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+      auto i = get_lb(key, x);
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) {
         // key found
         assert(x->is_leaf() || i + 1 < std::ssize(x->children_));
@@ -1602,8 +1657,7 @@ public:
     K key{std::forward<T>(raw_key)};
     auto x = root_.get();
     while (true) {
-      auto i =
-          get_lb_location(key, x->keys_.data(), x->keys_.data() + x->nkeys());
+      auto i = get_lb(key, x);
       if (i < x->nkeys() && key == Proj{}(x->keys_[i])) {
         return iterator_type(x, static_cast<attr_t>(i))->second;
       } else if (x->is_leaf()) {

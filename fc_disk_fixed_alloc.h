@@ -116,7 +116,8 @@ public:
   }
 
   void deallocate(T *ptr, size_t n) {
-    mem_res_->deallocate(reinterpret_cast<void *>(ptr), sizeof(T) * n);
+    mem_res_->deallocate(reinterpret_cast<void *>(ptr), sizeof(T) * n,
+                         std::alignment_of_v<T>);
   }
 
   [[nodiscard]] std::pmr::memory_resource *

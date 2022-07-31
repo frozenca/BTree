@@ -128,21 +128,36 @@ int main() {
 
   std::cout << "Balanced tree test\n";
   {
-    std::set<std::int64_t> rbtree;
+    fc::BTreeSet<std::int64_t> btree;
     // warm up for benchmark
-    tree_perf_test(rbtree, true);
+    tree_perf_test(btree, true);
   }
   std::cout << "Warming up complete...\n";
 
   {
-    std::cout << "frozenca::BTreeSet test\n";
+    std::cout << "frozenca::BTreeSet test (fanout 64 - default)\n";
     fc::BTreeSet<std::int64_t> btree;
     tree_perf_test(btree);
   }
   {
-    std::cout << "frozenca::DiskBTreeSet test\n";
+    std::cout << "frozenca::BTreeSet test (fanout 96)\n";
+    fc::BTreeSet<std::int64_t, 96> btree;
+    tree_perf_test(btree);
+  }
+  {
+    std::cout << "frozenca::DiskBTreeSet test (fanout 128)\n";
     fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL,
                                               true);
+    tree_perf_test(btree);
+  }
+  {
+    std::cout << "frozenca::BTreeSet test (fanout 128)\n";
+    fc::BTreeSet<std::int64_t, 128> btree;
+    tree_perf_test(btree);
+  }
+  {
+    std::cout << "frozenca::BTreeSet test (don't use SIMD) \n";
+    fc::BTreeSet<std::uint64_t> btree;
     tree_perf_test(btree);
   }
   {
