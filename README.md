@@ -117,6 +117,11 @@ The core operation for B-Tree is a search in the sorted key array of each node. 
 If you use Clang, I recommend that you set this variable to 1. For gcc users, it seems better not to change the variable (may be changed by future gcc optimizations)
 https://github.com/frozenca/BTree/blob/7083e8034b5905552cc6a3b8277452c56c05d587/fc_btree.h#L22
 
+## SIMD Operation
+
+When keys are signed integers or floating point types, if your machine supports AVX-512, you can activate SIMD intrinsics to speed up B-Tree operations, by setting this variable to 1:
+https://github.com/frozenca/BTree/blob/3498a53e75e916015561008cf91fecc3f7df69d1/fc_btree.h#L4
+
 ## Disk B-Tree
 
 You can use a specialized variant that utilizes memory-mapped disk files and an associated fixed-size allocator. You have to include ```fc_disk_btree.h```, ```fc_disk_fixed_alloc.h``` and ```fc_mmfile.h``` to use it.
