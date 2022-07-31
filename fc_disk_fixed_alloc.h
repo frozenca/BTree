@@ -13,12 +13,11 @@
 
 namespace frozenca {
 
-template <DiskAllocable T, std::size_t Count>
+template <typename T>
 class MemoryResourceFixed : public std::pmr::memory_resource {
-  static_assert(Count > 0, "count should be nonzero");
   union Chunk {
     Chunk *next_;
-    T object_[Count];
+    T object_;
   };
   static_assert(!(sizeof(Chunk) % sizeof(T)) && !(sizeof(Chunk) % sizeof(T *)),
                 "Chunk is not aligned");
@@ -32,7 +31,7 @@ public:
     if (!pool_ptr) {
       throw std::invalid_argument("pool ptr is null");
     }
-    if ((std::bit_cast<std::size_t>(pool_ptr) % sizeof(T)) ||
+    if ((std::bit_cast<std::size_t>(pool_ptr) % alignof(T)) ||
         (std::bit_cast<std::size_t>(pool_ptr) % sizeof(T *))) {
       throw std::invalid_argument("pool ptr is not aligned with T/T*");
     }
@@ -40,7 +39,7 @@ public:
       std::cout << pool_byte_size << ' ' << sizeof(Chunk) << '\n';
       throw std::invalid_argument("pool byte size is too small");
     }
-    if ((pool_byte_size % sizeof(T)) || (pool_byte_size % sizeof(T *))) {
+    if ((pool_byte_size % alignof(T)) || (pool_byte_size % sizeof(T *))) {
       throw std::invalid_argument("pool byte size is not aligned with T/T*");
     }
 
@@ -93,12 +92,12 @@ private:
   }
 };
 
-template <DiskAllocable T, std::size_t Count = 1> class AllocatorFixed {
+template <typename T> class AllocatorFixed {
   std::pmr::memory_resource *mem_res_;
 
 public:
   template <typename Other> struct rebind {
-    using other = AllocatorFixed<Other, Count>;
+    using other = AllocatorFixed<Other>;
   };
 
   using value_type = T;
@@ -107,8 +106,8 @@ public:
       std::pmr::memory_resource *mem_res = std::pmr::get_default_resource())
       : mem_res_{mem_res} {}
 
-  template <typename Other, size_t CountOther>
-  AllocatorFixed(const AllocatorFixed<Other, CountOther> &other)
+  template <typename Other>
+  AllocatorFixed(const AllocatorFixed<Other> &other)
       : AllocatorFixed(other.get_memory_resource()) {}
 
   T *allocate(size_t n) {
@@ -128,8 +127,8 @@ public:
 
 template <typename> struct isDiskAlloc : std::false_type {};
 
-template <DiskAllocable T, std::size_t Count>
-struct isDiskAlloc<AllocatorFixed<T, Count>> : std::true_type {};
+template <DiskAllocable T>
+struct isDiskAlloc<AllocatorFixed<T>> : std::true_type {};
 
 } // namespace frozenca
 

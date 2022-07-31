@@ -6,30 +6,24 @@
 
 namespace frozenca {
 
-template <DiskAllocable T, attr_t Fanout>
-constexpr std::size_t node_size = sizeof(void *) + (sizeof(attr_t) * 4) +
-                                  sizeof(T) *
-                                      static_cast<std::size_t>(2 * Fanout - 1) +
-                                  sizeof(std::vector<T>);
-
 template <DiskAllocable K, DiskAllocable V, attr_t Fanout, typename Comp,
           bool AllowDup>
 class DiskBTreeBase
-    : public BTreeBase<K, V, Fanout, Comp, AllowDup,
-                       AllocatorFixed<unsigned char, node_size<V, Fanout>>> {
+    : public BTreeBase<K, V, Fanout, Comp, AllowDup, AllocatorFixed> {
+public:
+  using Base = BTreeBase<K, V, Fanout, Comp, AllowDup, AllocatorFixed>;
+  using Node = Base::node_type;
+
 private:
   MemoryMappedFile mm_file_;
-  MemoryResourceFixed<unsigned char, node_size<V, Fanout>> mem_res_;
+  MemoryResourceFixed<Node> mem_res_;
 
 public:
-  using Base = BTreeBase<K, V, Fanout, Comp, AllowDup,
-                         AllocatorFixed<unsigned char, node_size<V, Fanout>>>;
-
   explicit DiskBTreeBase(const MemoryMappedFile &mm_file)
       : mm_file_{mm_file}, mem_res_{reinterpret_cast<unsigned char *>(
                                         mm_file_.data()),
                                     mm_file_.size()} {
-    Base(AllocatorFixed<unsigned char, node_size<V, Fanout>>(&mem_res_));
+    Base(AllocatorFixed<Node>(&mem_res_));
   }
 
   DiskBTreeBase(const std::filesystem::path &path, std::size_t pool_size,
@@ -38,7 +32,7 @@ public:
                                               reinterpret_cast<unsigned char *>(
                                                   mm_file_.data()),
                                               mm_file_.size()} {
-    Base(AllocatorFixed<unsigned char, node_size<V, Fanout>>(&mem_res_));
+    Base(AllocatorFixed<Node>(&mem_res_));
   }
 };
 

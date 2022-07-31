@@ -38,7 +38,7 @@ stats get_statistics(std::vector<float> &v) {
 
 template <typename TreeType>
 void tree_perf_test(TreeType &tree, bool warmup = false) {
-  constexpr int max_n = 10'000'000;
+  constexpr int max_n = 1'000'000;
   constexpr int max_trials = 1;
 
   std::mt19937 gen(std::random_device{}());
@@ -133,9 +133,16 @@ int main() {
     tree_perf_test(rbtree, true);
   }
   std::cout << "Warming up complete...\n";
+
+  {
+    std::cout << "frozenca::BTreeSet test\n";
+    fc::BTreeSet<std::int64_t> btree;
+    tree_perf_test(btree);
+  }
   {
     std::cout << "frozenca::DiskBTreeSet test\n";
-    fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
+    fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL,
+                                              true);
     tree_perf_test(btree);
   }
   {
