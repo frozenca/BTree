@@ -122,14 +122,17 @@ inline std::int32_t get_ub_simd(K key, const K *first, const K *last) {
       mask = cmp(key_broadcast, curr);
     }
 #ifdef _MSC_VER
-    int i = 0;
-    _BitScanForward(&i, mask);
+    unsigned long i = 0;
+    auto isnonzero = _BitScanForward(&i, mask);
+    if (isnonzero && i < SimdTrait<K>::unit) {
+      return offset + i;
+    }
 #else
     auto i = __builtin_ffs(mask) - 1;
-#endif // _MSC_VER
     if (i > -1) {
       return offset + i;
     }
+#endif // _MSC_VER
     curr += SimdTrait<K>::unit;
     offset += SimdTrait<K>::unit;
   }
