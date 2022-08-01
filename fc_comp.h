@@ -8,7 +8,9 @@
 #include <immintrin.h>
 #include <iostream>
 #include <type_traits>
-
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif // _MSC_VER
 
 namespace frozenca {
 
@@ -91,7 +93,12 @@ inline std::int32_t get_lb_simd(K key, const K *first, const K *last) {
     } else {
       mask = ~cmp(curr, key_broadcast);
     }
+#ifdef _MSC_VER
+    unsigned long i = 0;
+    _BitScanForward(&i, mask);
+#else
     auto i = __builtin_ffs(mask) - 1;
+#endif // _MSC_VER
     if (i < SimdTrait<K>::unit) {
       return offset + i;
     }
@@ -114,7 +121,12 @@ inline std::int32_t get_ub_simd(K key, const K *first, const K *last) {
     } else {
       mask = cmp(key_broadcast, curr);
     }
+#ifdef _MSC_VER
+    int i = 0;
+    _BitScanForward(&i, mask);
+#else
     auto i = __builtin_ffs(mask) - 1;
+#endif // _MSC_VER
     if (i > -1) {
       return offset + i;
     }
