@@ -1,7 +1,7 @@
 #ifndef __FC_BTREE_H__
 #define __FC_BTREE_H__
 
-#define FC_USE_SIMD 1
+#define FC_USE_SIMD 0
 #define FC_PREFER_BINARY_SEARCH 0
 
 #if FC_USE_SIMD
