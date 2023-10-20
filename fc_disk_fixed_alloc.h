@@ -2,6 +2,7 @@
 #define __FC_DISK_FIXED_ALLOC_H__
 
 #include "fc_mmfile.h"
+#include "fc_details.h"
 #include <bit>
 #include <cassert>
 #include <concepts>

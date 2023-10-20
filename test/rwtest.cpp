@@ -1,15 +1,19 @@
-#include "../fc_btree.h"
+#define _UNIT_TEST
+
+#include <catch2/catch_test_macros.hpp>
 #include <fstream>
 #include <iostream>
 
-int main() {
+#include "fc_btree.h"
+
+TEST_CASE("rw-test") {
   namespace fc = frozenca;
   fc::BTreeSet<int> btree_out;
 
   constexpr int n = 100;
 
   for (int i = 0; i < n; ++i) {
-    btree_out.insert(i);
+    REQUIRE_NOTHROW(btree_out.insert(i));
   }
   {
     std::ofstream ofs{"btree.bin", std::ios_base::out | std::ios_base::binary |
@@ -24,9 +28,6 @@ int main() {
   }
 
   for (int i = 0; i < n; ++i) {
-    if (!btree_in.contains(i)) {
-      std::cout << "deserialized tree key lookup failed\n";
-    }
+    REQUIRE(btree_in.contains(i));
   }
-  std::cout << "OK\n";
 }
