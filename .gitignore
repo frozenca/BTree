@@ -1,0 +1,9 @@
+/cmake-build-debug/
+/cmake-build-relwithdebinfo/
+/cmake-build-vsc/
+/.idea/
+/.vscode/
+/vcpkg/
+CMakeLists.txt.user
+vcpkg
+VERSION.txt

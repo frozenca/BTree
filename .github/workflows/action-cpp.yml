@@ -1,0 +1,40 @@
+name: build and cpack
+on: [ push, pull_request ]
+jobs:
+  ubuntu-22-04:
+    runs-on: ubuntu-latest
+    name: Build on ${{ matrix.container }} x86_64
+    strategy:
+      #
+      # matrix for containers
+      #
+      matrix:
+        container:
+          - ubuntu:22.04
+
+    container:
+      image: ${{ matrix.container }}
+
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+      - name: Get commit sha
+        id: git_sha
+        run: echo "git_sha=$(echo $GITHUB_SHA)" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v3
+      # install dependencies
+      - name: devel-pkgs
+        run: apt-get update -y && apt-get install -yq binutils make cmake catch2 gcc g++ lsb-release
+      # build project
+      - name: mkdir
+        run: mkdir cmake-build-release
+      - name: cmake cmake-build-release
+        run: cmake -DCOMMITTER_DATE="${{ steps.date.outputs.date }}" -DCOMMITTER_FULLSHA="${{ steps.git_sha.outputs.git_sha }}" -DCOMMITTER_SHORTSHA="$(echo ${{ steps.git_sha.outputs.git_sha }} | cut -c1-7)" -DCMAKE_BUILD_TYPE=Release -Bcmake-build-release -H.
+      - name: cmake make
+        run: cmake --build cmake-build-release/ --target all --parallel
+      - name: get-version
+        id: get-version
+        run: echo "prj_ver=$(cat ./VERSION.txt)" >> $GITHUB_OUTPUT
+      - name: ctest
+        run: cd cmake-build-release && ctest && cd ..
