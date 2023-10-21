@@ -12,6 +12,8 @@ jobs:
         container:
           - ubuntu:latest
           - debian:latest
+          - fedora:latest
+          - almalinux:latest
 
     container:
       image: ${{ matrix.container }}
@@ -26,7 +28,15 @@ jobs:
       - uses: actions/checkout@v3
       # install dependencies
       - name: devel-pkgs
-        run: apt-get update -y && apt-get install -yq binutils make cmake catch2 gcc g++ lsb-release
+        run: |
+          case "${{ matrix.container }}" in
+            ubuntu*|debian*)
+              apt-get update -y && apt-get install -yq binutils make cmake catch2 gcc g++ lsb-release
+            ;;
+            fedora*|almalinux*)
+              yum update -y && yum install -yq binutils make cmake catch2 rpm-build redhat-lsb
+            ;;
+          esac
       # build project
       - name: mkdir
         run: mkdir cmake-build-release
