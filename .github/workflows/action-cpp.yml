@@ -10,7 +10,8 @@ jobs:
       #
       matrix:
         container:
-          - ubuntu:22.04
+          - ubuntu:latest
+          - debian:latest
 
     container:
       image: ${{ matrix.container }}
