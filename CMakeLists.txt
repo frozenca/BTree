@@ -14,6 +14,11 @@ find_package(VersionHeader)
 set(PROJECT_VERSION "${MAJOR}.${MINOR}.${PATCH}.${COMMITTER_SHORTSHA}")
 file(WRITE ${CMAKE_SOURCE_DIR}/VERSION.txt "${MAJOR}.${MINOR}.${PATCH}")
 find_package(Catch2 REQUIRED)
+set(CATCH_LIBS_ALIASES Catch2::Catch2 Catch2::Catch2WithMain)
+if (NOT TARGET Catch2::Catch2WithMain)
+    message("Used old target for catch2")
+    set(CATCH_LIBS_ALIASES Catch2::Catch2)
+endif()
 
 function(get_linux_lsb_release_information)
     find_program(LSB_RELEASE_EXEC lsb_release)
@@ -53,7 +58,7 @@ add_executable(fc_tests
     fc_mmfile_nix.h
     fc_details.h)
 target_include_directories(fc_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(fc_tests PRIVATE Catch2::Catch2 Catch2::Catch2WithMain)
+target_link_libraries(fc_tests PRIVATE ${CATCH_LIBS_ALIASES})
 
 if(MSVC)
     target_compile_options(fc_tests PRIVATE /W4 /WX /nologo /MDd /EHsc /std:c++latest /experimental:module)
