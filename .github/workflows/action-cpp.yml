@@ -13,7 +13,7 @@ jobs:
           - ubuntu:latest
           - debian:latest
           - fedora:latest
-          - almalinux:latest
+          - altlinux:latest
 
     container:
       image: ${{ matrix.container }}
@@ -33,8 +33,11 @@ jobs:
             ubuntu*|debian*)
               apt-get update -y && apt-get install -yq binutils make cmake catch2 gcc g++ lsb-release
             ;;
-            fedora*|almalinux*)
+            fedora*)
               yum update -y && yum install -yq binutils make cmake catch2 rpm-build redhat-lsb
+            ;;
+            altlinux*)
+              apt-get update -y && apt-get install -yq binutils make cmake catch2 gcc-defaults rpm-build lsb-release
             ;;
           esac
       # build project
