@@ -13,7 +13,7 @@ jobs:
           - ubuntu:latest
           - debian:latest
           - fedora:latest
-          - alt:latest
+          - alt:sisyphus
 
     container:
       image: ${{ matrix.container }}
@@ -37,7 +37,7 @@ jobs:
               yum update -y && yum install -yq binutils make cmake catch2-devel rpm-build redhat-lsb
             ;;
             alt*)
-              apt-get update -y && apt-get install -yq binutils make cmake catch2-devel gcc gcc-c++ rpm-build lsb-release
+              apt-get update -y && apt-get install -yq binutils git make cmake catch2-devel gcc gcc-c++ rpm-build lsb-release
             ;;
           esac
       # build project
