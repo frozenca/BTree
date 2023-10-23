@@ -31,10 +31,10 @@ jobs:
         run: |
           case "${{ matrix.container }}" in
             ubuntu*|debian*)
-              apt-get update -y && apt-get install -yq binutils make cmake catch2 gcc g++ lsb-release
+              apt-get update -y && apt-get install -yq binutils git make cmake catch2 gcc g++ lsb-release
             ;;
             fedora*)
-              yum update -y && yum install -yq binutils make cmake catch2-devel rpm-build redhat-lsb
+              yum update -y && yum install -yq binutils git make cmake catch2-devel rpm-build redhat-lsb
             ;;
             alt*)
               apt-get update -y && apt-get install -yq binutils git make cmake catch2-devel gcc gcc-c++ rpm-build lsb-release

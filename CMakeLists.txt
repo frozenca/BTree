@@ -57,7 +57,7 @@ add_executable(fc_tests
 if (NOT TARGET Catch2::Catch2WithMain)
     message(STATUS "Used old target for catch2")
     set(CATCH_LIBS_ALIASES Catch2::Catch2)
-    add_definitions(CATCH2_OLD)
+    target_compile_definitions(fc_tests PRIVATE CATCH2_OLD)
     set_source_files_properties(unittest.cpp PROPERTIES COMPILE_DEFINITIONS CATCH_CONFIG_MAIN)
 endif()
 target_include_directories(fc_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
