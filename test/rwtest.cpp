@@ -3,7 +3,7 @@
 #ifdef CATCH2_OLD
 #include <catch2/catch.hpp>
 #else
-#include <catch2/catch_all.hpp>
+#include <catch2/catch_test_macros.hpp>
 #endif
 #include <fstream>
 #include <iostream>
