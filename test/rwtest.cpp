@@ -1,6 +1,10 @@
 #define _UNIT_TEST
 
+#ifdef CATCH2_OLD
 #include <catch2/catch.hpp>
+#else
+#include <catch2/catch_all.hpp>
+#endif
 #include <fstream>
 #include <iostream>
 

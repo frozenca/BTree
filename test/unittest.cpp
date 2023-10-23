@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <cassert>
+#ifdef CATCH2_OLD
 #include <catch2/catch.hpp>
+#else
+#include <catch2/catch_all.hpp>
+#endif
 #include <iostream>
 #include <random>
 #include <string>
