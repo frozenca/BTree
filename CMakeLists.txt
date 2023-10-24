@@ -62,7 +62,9 @@ add_executable(fc_tests
 
 if (${Catch_VER} EQUAL 2)
     message(STATUS "Used old target for catch2")
-    set(CATCH_LIBS_ALIASES Catch2::Catch2)
+    if (NOT TARGET Catch2::Catch2WithMain)
+        set(CATCH_LIBS_ALIASES Catch2::Catch2)
+    endif()
     set_source_files_properties(unittest.cpp PROPERTIES COMPILE_DEFINITIONS CATCH_CONFIG_MAIN)
     target_compile_definitions(fc_tests PRIVATE CATCH2_OLD)
 endif()
