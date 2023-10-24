@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #ifdef CATCH2_OLD
-#include <catch.hpp>
+#define CATCH_CONFIG_MAIN
+#include <catch2/catch.hpp>
 #else
 #include <catch2/catch_test_macros.hpp>
 #endif

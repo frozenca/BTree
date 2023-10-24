@@ -65,7 +65,7 @@ if (${Catch_VER} EQUAL 2)
     if (NOT TARGET Catch2::Catch2WithMain)
         set(CATCH_LIBS_ALIASES Catch2::Catch2)
     endif()
-    set_source_files_properties(unittest.cpp PROPERTIES COMPILE_DEFINITIONS CATCH_CONFIG_MAIN)
+    #set_source_files_properties(unittest.cpp PROPERTIES COMPILE_DEFINITIONS CATCH_CONFIG_MAIN)
     target_compile_definitions(fc_tests PRIVATE CATCH2_OLD)
 endif()
 
