@@ -13,7 +13,13 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(VersionHeader)
 set(PROJECT_VERSION "${MAJOR}.${MINOR}.${PATCH}.${COMMITTER_SHORTSHA}")
 file(WRITE ${CMAKE_SOURCE_DIR}/VERSION.txt "${MAJOR}.${MINOR}.${PATCH}")
-find_package(Catch2 REQUIRED)
+
+find_package(Catch2 3 QUIET)
+set(Catch_VER 3)
+if (NOT Catch2_FOUND)
+    find_package(Catch2 REQUIRED)
+    set(Catch_VER 2)
+endif()
 set(CATCH_LIBS_ALIASES Catch2::Catch2 Catch2::Catch2WithMain)
 
 function(get_linux_lsb_release_information)
@@ -54,12 +60,13 @@ add_executable(fc_tests
     fc_mmfile_nix.h
     fc_details.h)
 
-if (NOT TARGET Catch2::Catch2WithMain)
+if (${Catch_VER} EQUAL 2)
     message(STATUS "Used old target for catch2")
     set(CATCH_LIBS_ALIASES Catch2::Catch2)
-    target_compile_definitions(fc_tests PRIVATE CATCH2_OLD)
     set_source_files_properties(unittest.cpp PROPERTIES COMPILE_DEFINITIONS CATCH_CONFIG_MAIN)
+    target_compile_definitions(fc_tests PRIVATE CATCH2_OLD)
 endif()
+
 target_include_directories(fc_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(fc_tests PRIVATE ${CATCH_LIBS_ALIASES})
 
