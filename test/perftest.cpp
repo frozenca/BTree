@@ -1,4 +1,5 @@
-#include "fc_disk_btree.h"
+#include "fc_catch2.h"
+#include "fc/disk_btree.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -7,6 +8,7 @@
 #include <random>
 #include <set>
 #include <vector>
+#include <unordered_map>
 
 struct stats {
   float average = 0.0f;
@@ -36,10 +38,30 @@ stats get_statistics(std::vector<float> &v) {
   return s;
 }
 
+struct perf_result {
+  size_t values_cnt{0};
+  stats insert;
+  stats find;
+  stats erase;
+  void print_stats() const {
+    auto print = [this](const std::string &stat_name, const stats &stat) {
+      std::cout << "\tTime to " << stat_name << " " << values_cnt << " elements:\n"
+                << "\tAverage : " << stat.average << "ms,\n"
+                << "\tStdev   : " << stat.stdev << "ms,\n"
+                << "\t95%     : " << stat.percentile_95 << "ms,\n"
+                << "\t99%     : " << stat.percentile_99 << "ms,\n"
+                << "\t99.9%   : " << stat.percentile_999 << "ms,\n";
+    };
+    print("insert", insert);
+    print("find", find);
+    print("erase", erase);
+  }
+};
+
 template <typename TreeType>
-void tree_perf_test(TreeType &tree, bool warmup = false) {
-  constexpr int max_n = 1'000'000;
-  constexpr int max_trials = 1;
+[[maybe_unused]] perf_result tree_perf_test(TreeType &tree, size_t values_cnt = 1'000'000, size_t trials = 1) {
+  const size_t max_n = values_cnt;
+  const size_t max_trials = trials;
 
   std::mt19937 gen(std::random_device{}());
   std::vector<float> durations_insert;
@@ -48,17 +70,14 @@ void tree_perf_test(TreeType &tree, bool warmup = false) {
   std::vector<typename TreeType::value_type> v(max_n);
   std::iota(v.begin(), v.end(), 0);
 
-  for (int t = 0; t < max_trials; ++t) {
+  for (size_t t = 0; t < max_trials; ++t) {
     float duration = 0.0f;
     std::ranges::shuffle(v, gen);
     for (auto num : v) {
       auto start = std::chrono::steady_clock::now();
       tree.insert(num);
       auto end = std::chrono::steady_clock::now();
-      duration +=
-          std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(
-              end - start)
-              .count();
+      duration += std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end - start).count();
     }
     durations_insert.push_back(duration);
 
@@ -70,10 +89,7 @@ void tree_perf_test(TreeType &tree, bool warmup = false) {
         std::cerr << "Lookup verification fail!\n";
       }
       auto end = std::chrono::steady_clock::now();
-      duration +=
-          std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(
-              end - start)
-              .count();
+      duration += std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end - start).count();
     }
     durations_find.push_back(duration);
 
@@ -85,84 +101,54 @@ void tree_perf_test(TreeType &tree, bool warmup = false) {
         std::cerr << "Erase verification fail!\n";
       }
       auto end = std::chrono::steady_clock::now();
-      duration +=
-          std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(
-              end - start)
-              .count();
+      duration += std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end - start).count();
     }
     durations_erase.push_back(duration);
   }
-  if (!warmup) {
-    {
-      auto stat = get_statistics(durations_insert);
-      std::cout << "Time to insert " << max_n << " elements:\n"
-                << "Average : " << stat.average << "ms,\n"
-                << "Stdev   : " << stat.stdev << "ms,\n"
-                << "95%     : " << stat.percentile_95 << "ms,\n"
-                << "99%     : " << stat.percentile_99 << "ms,\n"
-                << "99.9%   : " << stat.percentile_999 << "ms,\n";
-    }
-    {
-      auto stat = get_statistics(durations_find);
-      std::cout << "Time to lookup " << max_n << " elements:\n"
-                << "Average : " << stat.average << "ms,\n"
-                << "Stdev   : " << stat.stdev << "ms,\n"
-                << "95%     : " << stat.percentile_95 << "ms,\n"
-                << "99%     : " << stat.percentile_99 << "ms,\n"
-                << "99.9%   : " << stat.percentile_999 << "ms,\n";
-    }
-    {
-      auto stat = get_statistics(durations_erase);
-      std::cout << "Time to erase " << max_n << " elements:\n"
-                << "Average : " << stat.average << "ms,\n"
-                << "Stdev   : " << stat.stdev << "ms,\n"
-                << "95%     : " << stat.percentile_95 << "ms,\n"
-                << "99%     : " << stat.percentile_99 << "ms,\n"
-                << "99.9%   : " << stat.percentile_999 << "ms,\n";
-    }
-  }
+  perf_result result;
+  result.values_cnt = max_n;
+  result.insert = get_statistics(durations_insert);
+  result.find = get_statistics(durations_find);
+  result.erase = get_statistics(durations_erase);
+  return result;
 }
 
-int main() {
+TEST_CASE("perftest") {
   namespace fc = frozenca;
+  std::unordered_map<std::string, perf_result> result;
 
-  std::cout << "Balanced tree test\n";
-  {
-    fc::BTreeSet<std::int64_t> btree;
-    // warm up for benchmark
-    tree_perf_test(btree, true);
-  }
-  std::cout << "Warming up complete...\n";
-
-  {
-    std::cout << "frozenca::BTreeSet test (fanout 64 - default)\n";
+  BENCHMARK("Balanced tree test - warmap") {
     fc::BTreeSet<std::int64_t> btree;
     tree_perf_test(btree);
-  }
-  {
-    std::cout << "frozenca::BTreeSet test (fanout 96)\n";
+  };
+  BENCHMARK("frozenca::BTreeSet test (fanout 64)") {
+    fc::BTreeSet<std::int64_t> btree;
+    result.emplace("BTreeSet(64)", tree_perf_test(btree));
+  };
+  BENCHMARK("frozenca::BTreeSet test (fanout 96)") {
     fc::BTreeSet<std::int64_t, 96> btree;
-    tree_perf_test(btree);
-  }
-  {
-    std::cout << "frozenca::DiskBTreeSet test (fanout 128)\n";
-    fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL,
-                                              true);
-    tree_perf_test(btree);
-  }
-  {
-    std::cout << "frozenca::BTreeSet test (fanout 128)\n";
+    result.emplace("BTreeSet(96)", tree_perf_test(btree));
+  };
+  BENCHMARK("frozenca::DiskBTreeSet test (fanout 128)") {
+    fc::DiskBTreeSet<std::int64_t, 128> btree("database.bin", 1UL << 25UL, true);
+    result.emplace("DiskBTreeSet(128)", tree_perf_test(btree));
+  };
+  BENCHMARK("frozenca::BTreeSet test (fanout 128)") {
     fc::BTreeSet<std::int64_t, 128> btree;
-    tree_perf_test(btree);
-  }
-  {
-    std::cout << "frozenca::BTreeSet test (don't use SIMD) \n";
+    result.emplace("BTreeSet(128)", tree_perf_test(btree));
+  };
+  BENCHMARK("frozenca::BTreeSet test (don't use SIMD)") {
     fc::BTreeSet<std::uint64_t> btree;
-    tree_perf_test(btree);
-  }
-  {
-    std::cout << "std::set test\n";
+    result.emplace("BTreeSet(no-simd)", tree_perf_test(btree));
+  };
+  BENCHMARK("std::set test") {
     std::set<std::int64_t> rbtree;
-    tree_perf_test(rbtree);
+    result.emplace("std::set", tree_perf_test(rbtree));
+  };
+
+  for (const auto &[key, value] : result) {
+    std::cout << "----------------" << '\n';
+    std::cout << key << '\n';
+    value.print_stats();
   }
 }

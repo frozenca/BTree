@@ -1,20 +1,16 @@
 #define _UNIT_TEST
 
+#include "fc_catch2.h"
+
 #include <algorithm>
 #include <cassert>
-#ifdef CATCH2_OLD
-#define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
-#else
-#include <catch2/catch_test_macros.hpp>
-#endif
 #include <iostream>
 #include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "fc_btree.h"
+#include "fc/btree.h"
 
 namespace fc = frozenca;
 

@@ -5,12 +5,12 @@
 #define FC_PREFER_BINARY_SEARCH 0
 
 #if FC_USE_SIMD
-#include "fc_comp.h"
+#include "fc/comp.h"
 #ifdef _MSC_VER
 #pragma warning(disable : 4324)
 #endif // MSC_VER
 #endif // FC_USE_SIMD
-#include "fc_details.h"
+#include "fc/details.h"
 #include <algorithm>
 #include <array>
 #include <cassert>

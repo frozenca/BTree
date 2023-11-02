@@ -1,14 +1,10 @@
 #define _UNIT_TEST
 
-#ifdef CATCH2_OLD
-#include <catch2/catch.hpp>
-#else
-#include <catch2/catch_test_macros.hpp>
-#endif
+#include "fc_catch2.h"
 #include <fstream>
 #include <iostream>
 
-#include "fc_btree.h"
+#include "fc/btree.h"
 
 TEST_CASE("rw-test") {
   namespace fc = frozenca;

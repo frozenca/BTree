@@ -49,16 +49,30 @@ else()
     message(STATUS "OS VERSION ${CMAKE_SYSTEM_VERSION}")
 endif()
 
+
+add_library(btree INTERFACE
+    include/fc/comp.h 
+    include/fc/disk_fixed_alloc.h 
+    include/fc/mmfile.h 
+    include/fc/btree.h 
+    include/fc/disk_btree.h
+    include/fc/mmfile_win.h
+    include/fc/mmfile_nix.h
+    include/fc/details.h)
+
+target_include_directories(
+    btree
+    INTERFACE
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>" )
+
+add_library(btree::lib ALIAS btree)
+
 add_executable(fc_tests
+    test/fc_catch2.h
     test/unittest.cpp
     test/rwtest.cpp
-    fc_comp.h 
-    fc_disk_fixed_alloc.h 
-    fc_mmfile.h fc_btree.h 
-    fc_disk_btree.h
-    fc_mmfile_win.h
-    fc_mmfile_nix.h
-    fc_details.h)
+    test/perftest.cpp)
 
 if (${Catch_VER} EQUAL 2)
     message(STATUS "Used old target for catch2")
@@ -69,7 +83,7 @@ if (${Catch_VER} EQUAL 2)
 endif()
 
 target_include_directories(fc_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(fc_tests PRIVATE ${CATCH_LIBS_ALIASES})
+target_link_libraries(fc_tests PRIVATE ${CATCH_LIBS_ALIASES} btree::lib)
 
 if(MSVC)
     target_compile_options(fc_tests PRIVATE /W4 /WX /nologo /MDd /EHsc /std:c++latest /experimental:module)

@@ -6,9 +6,9 @@
 #include <stdexcept>
 
 #if _WIN32 || _WIN64
-#include "fc_mmfile_win.h"
+#include "fc/mmfile_win.h"
 #else
-#include "fc_mmfile_nix.h"
+#include "fc/mmfile_nix.h"
 #endif
 
 namespace frozenca {
