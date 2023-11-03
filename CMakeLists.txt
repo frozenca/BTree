@@ -81,7 +81,7 @@ if (${Catch_VER} EQUAL 2)
     endif()
     target_compile_definitions(fc_tests PRIVATE CATCH2_OLD)
 endif()
-target_compile_definitions(fc_tests PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
+
 target_include_directories(fc_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(fc_tests PRIVATE ${CATCH_LIBS_ALIASES} btree::lib)
 

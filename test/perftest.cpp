@@ -1,3 +1,4 @@
+#define CATCH_CONFIG_ENABLE_BENCHMARKING
 #include "fc_catch2.h"
 #include "fc/disk_btree.h"
 #include <algorithm>
