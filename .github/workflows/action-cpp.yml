@@ -52,3 +52,27 @@ jobs:
         run: echo "prj_ver=$(cat ./VERSION.txt)" >> $GITHUB_OUTPUT
       - name: ctest
         run: cd cmake-build-release && ctest && cd ..
+      - name: cpack
+        run: |
+          case "${{ matrix.container }}" in
+            ubuntu*|debian*)
+              cd cmake-build-release && cpack -G DEB && cd ..
+            ;;
+            fedora*)
+              cd cmake-build-release && cpack -G RPM && cd ..
+            ;;
+            alt*)
+              cd cmake-build-release && cpack -G RPM && cd ..
+            ;;
+          esac
+      - uses: mad9000/actions-find-and-replace-string@3
+        id: container
+        with:
+          source: ${{ matrix.container }}
+          find: ':'        # we want to remove : from container name
+          replace: '-'     # and replace it with -
+      - name: Upload BTree binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ format('BTree-{0}.{1}', steps.get-version.outputs.prj_ver, steps.container.outputs.value) }}
+          path: cmake-build-release/${{ format('BTree-{0}-noarch.???', steps.get-version.outputs.prj_ver) }}

@@ -6,7 +6,7 @@ set(MINOR "0")
 set(PATCH "1")
 cmake_policy(SET CMP0048 NEW)
 
-project(btree VERSION ${MAJOR}.${MINOR}.${PATCH})
+project(BTree VERSION ${MAJOR}.${MINOR}.${PATCH})
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -41,6 +41,7 @@ message(STATUS "COMMITTER_FULLSHA ${COMMITTER_FULLSHA}")
 message(STATUS "COMMITTER_SHORTSHA ${COMMITTER_SHORTSHA}")
 message(STATUS "COMMITTER_DATE ${COMMITTER_DATE}")
 message(STATUS "PROJECT_VERSION ${PROJECT_VERSION}")
+
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     get_linux_lsb_release_information()
     message(STATUS "OS Linux ${LSB_RELEASE_ID_SHORT} ${LSB_RELEASE_VERSION_SHORT} ${LSB_RELEASE_CODENAME_SHORT}")
@@ -50,7 +51,7 @@ else()
 endif()
 
 
-add_library(btree INTERFACE
+add_library(BTree INTERFACE
     include/fc/comp.h 
     include/fc/disk_fixed_alloc.h 
     include/fc/mmfile.h 
@@ -61,12 +62,12 @@ add_library(btree INTERFACE
     include/fc/details.h)
 
 target_include_directories(
-    btree
+    BTree
     INTERFACE
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>" )
 
-add_library(btree::lib ALIAS btree)
+add_library(BTree::BTree ALIAS BTree)
 
 add_executable(fc_tests
     test/fc_catch2.h
@@ -83,7 +84,7 @@ if (${Catch_VER} EQUAL 2)
 endif()
 
 target_include_directories(fc_tests PRIVATE ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(fc_tests PRIVATE ${CATCH_LIBS_ALIASES} btree::lib)
+target_link_libraries(fc_tests PRIVATE ${CATCH_LIBS_ALIASES} BTree::BTree)
 
 if(MSVC)
     target_compile_options(fc_tests PRIVATE /W4 /WX /nologo /MDd /EHsc /std:c++latest /experimental:module)
@@ -97,3 +98,85 @@ endif()
 include(CTest)
 include(Catch)
 catch_discover_tests(fc_tests)
+
+set(CPACK_SOURCE_IGNORE_FILES
+    #git files
+    "\\\\.git/"
+    "\\\\.github/"
+    # temporary files
+    "\\\\.swp$"
+    # backup files
+    "~$"
+    # eclipse files
+    "\\\\.cdtproject$"
+    "\\\\.cproject$"
+    "\\\\.project$"
+    "\\\\.settings/"
+    # others
+    "\\\\.#"
+    "/#"
+    "/build/"
+    "/_build/"
+    "/\\\\.git/"
+    "Makefile\\\\.in$"
+)
+
+include(GNUInstallDirs)
+
+install(
+    TARGETS BTree
+    EXPORT BTree_Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "BTreeConfigVersion.cmake"
+    VERSION ${MAJOR}.${MINOR}.${PATCH}
+    COMPATIBILITY SameMajorVersion)
+
+configure_package_config_file(
+    "${PROJECT_SOURCE_DIR}/cmake/BTreeConfig.cmake.in"
+    "${PROJECT_BINARY_DIR}/BTreeConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/BTree/cmake)
+
+install(
+    EXPORT BTree_Targets
+    FILE BTreeTargets.cmake
+    NAMESPACE BTree::
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/BTree/cmake)
+
+install(FILES "${PROJECT_BINARY_DIR}/BTreeConfig.cmake"
+    "${PROJECT_BINARY_DIR}/BTreeConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/BTree/cmake)
+
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/fc
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+set(CPACK_PACKAGE_NAME "BTree")
+set(CPACK_PACKAGE_VERSION "${MAJOR}.${MINOR}.${PATCH}")
+set(CPACK_PACKAGE_VENDOR "community")
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-noarch")
+set(CMAKE_PROJECT_HOMEPAGE_URL "https://github.com/bas524/BTree")
+set(CPACK_PACKAGE_CONTACT "bas524")
+set(CPACK_PACKAGE_MAINTAINER "bas524")
+set(CPACK_PACKAGE_DESCRIPTION "A general-purpose high-performance lightweight STL-like modern C++ B-Tree")
+
+set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
+set(CPACK_DEBIAN_PACKAGE_VERSION ${CPACK_PACKAGE_VERSION})
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER ${CPACK_PACKAGE_MAINTAINER})
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION ${CPACK_PACKAGE_DESCRIPTION})
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE ${CMAKE_PROJECT_HOMEPAGE_URL})
+set(CPACK_DEBIAN_PACKAGE_LICENSE "Apache-2.0")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "")
+
+set(CPACK_RPM_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
+set(CPACK_RPM_PACKAGE_VERSION ${CPACK_PACKAGE_VERSION})
+set(CPACK_RPM_PACKAGE_MAINTAINER ${CPACK_PACKAGE_MAINTAINER})
+set(CPACK_RPM_PACKAGE_DESCRIPTION ${CPACK_PACKAGE_DESCRIPTION})
+set(CPACK_RPM_PACKAGE_URL ${CMAKE_PROJECT_HOMEPAGE_URL})
+set(CPACK_RPM_PACKAGE_LICENSE "Apache-2.0")
+set(CPACK_RPM_PACKAGE_REQUIRES "")
+
+include(CPack)

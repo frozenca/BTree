@@ -9,6 +9,7 @@
 #include <set>
 #include <vector>
 #include <unordered_map>
+#include <sstream>
 
 struct stats {
   float average = 0.0f;
@@ -45,12 +46,14 @@ struct perf_result {
   stats erase;
   void print_stats() const {
     auto print = [this](const std::string &stat_name, const stats &stat) {
-      std::cout << "\tTime to " << stat_name << " " << values_cnt << " elements:\n"
+      std::stringstream ss;
+      ss << "\tTime to " << stat_name << " " << values_cnt << " elements:\n"
                 << "\tAverage : " << stat.average << "ms,\n"
                 << "\tStdev   : " << stat.stdev << "ms,\n"
                 << "\t95%     : " << stat.percentile_95 << "ms,\n"
                 << "\t99%     : " << stat.percentile_99 << "ms,\n"
                 << "\t99.9%   : " << stat.percentile_999 << "ms,\n";
+      INFO(ss.str());
     };
     print("insert", insert);
     print("find", find);
@@ -86,7 +89,7 @@ template <typename TreeType>
     for (auto num : v) {
       auto start = std::chrono::steady_clock::now();
       if (!tree.contains(num)) {
-        std::cerr << "Lookup verification fail!\n";
+        FAIL("Lookup verification fail!");
       }
       auto end = std::chrono::steady_clock::now();
       duration += std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end - start).count();
@@ -98,7 +101,7 @@ template <typename TreeType>
     for (auto num : v) {
       auto start = std::chrono::steady_clock::now();
       if (!tree.erase(num)) {
-        std::cerr << "Erase verification fail!\n";
+        FAIL("Erase verification fail!");
       }
       auto end = std::chrono::steady_clock::now();
       duration += std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end - start).count();
