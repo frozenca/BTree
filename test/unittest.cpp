@@ -1,5 +1,9 @@
 #define _UNIT_TEST
 
+#ifndef CATCH_CONFIG_MAIN
+#define CATCH_CONFIG_MAIN
+#endif // CATCH_CONFIG_MAIN
+
 #include "fc_catch2.h"
 
 #include <algorithm>
