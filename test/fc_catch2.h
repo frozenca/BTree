@@ -1,6 +1,14 @@
 #ifndef FC_CATCH2_H
 #define FC_CATCH2_H
 
+#ifndef CATCH_CONFIG_ENABLE_BENCHMARKING
+#define CATCH_CONFIG_ENABLE_BENCHMARKING
+#endif // CATCH_CONFIG_ENABLE_BENCHMARKING
+
+#ifndef CATCH_CONFIG_MAIN
+#define CATCH_CONFIG_MAIN
+#endif // CATCH_CONFIG_MAIN
+
 #ifdef CATCH2_OLD
 #include <catch2/catch.hpp>
 #else
