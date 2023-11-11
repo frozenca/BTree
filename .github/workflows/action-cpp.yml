@@ -62,7 +62,7 @@ jobs:
               cd cmake-build-release && cpack -G RPM && cd ..
             ;;
             alt*)
-              cd cmake-build-release && cpack -G RPM && cd ..
+              cd cmake-build-release && echo "%_allow_root_build      1" > /etc/rpm/macros.d/02-enable-build-root && cpack -G RPM && cd ..
             ;;
           esac
       - uses: mad9000/actions-find-and-replace-string@3
