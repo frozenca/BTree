@@ -8,6 +8,9 @@ cmake_policy(SET CMP0048 NEW)
 
 project(BTree VERSION ${MAJOR}.${MINOR}.${PATCH})
 
+option(FORCE_USE_SIMD "force define FC_USE_SIMD (apllicable only for x86_64)" OFF)
+option(FORCE_PREFER_BINARY_SEARCH "force define FC_PREFER_BINARY_SEARCH (recommended for clang only)" OFF)
+
 set(CMAKE_CXX_STANDARD 20)
 
 find_package(VersionHeader)
@@ -69,11 +72,22 @@ target_include_directories(
 
 add_library(BTree::BTree ALIAS BTree)
 
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR FORCE_PREFER_BINARY_SEARCH)
+    add_definitions(-DFC_PREFER_BINARY_SEARCH=1)
+endif()
+
+if (FORCE_USE_SIMD)
+    add_definitions(-DFC_USE_SIMD=1)
+endif ()
+
 add_executable(fc_tests
+    test/test_statistics.h
+    test/test_statistics.cpp
     test/fc_catch2.h
     test/unittest.cpp
     test/rwtest.cpp
-    test/perftest.cpp)
+    test/perftest.cpp
+    test/perftest_no_simd.cpp)
 
 if (${Catch_VER} EQUAL 2)
     message(STATUS "Used old target for catch2")

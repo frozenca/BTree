@@ -1,8 +1,13 @@
 #ifndef __FC_BTREE_H__
 #define __FC_BTREE_H__
 
+#ifndef FC_USE_SIMD
 #define FC_USE_SIMD 0
+#endif // FC_USE_SIMD
+
+#ifndef FC_PREFER_BINARY_SEARCH
 #define FC_PREFER_BINARY_SEARCH 0
+#endif //FC_PREFER_BINARY_SEARCH
 
 #if FC_USE_SIMD
 #include "fc/comp.h"
@@ -10,6 +15,7 @@
 #pragma warning(disable : 4324)
 #endif // MSC_VER
 #endif // FC_USE_SIMD
+
 #include "fc/details.h"
 #include <algorithm>
 #include <array>
