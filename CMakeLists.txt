@@ -87,7 +87,8 @@ add_executable(fc_tests
     test/unittest.cpp
     test/rwtest.cpp
     test/perftest.cpp
-    test/perftest_no_simd.cpp)
+    test/perftest_no_simd.cpp
+    test/perftest_string.cpp)
 
 if (${Catch_VER} EQUAL 2)
     message(STATUS "Used old target for catch2")
@@ -111,7 +112,8 @@ endif()
 
 include(CTest)
 include(Catch)
-catch_discover_tests(fc_tests)
+catch_discover_tests(fc_tests
+    EXTRA_ARGS --benchmark-samples=1)
 
 set(CPACK_SOURCE_IGNORE_FILES
     #git files

@@ -12,6 +12,19 @@ There are four specialized B-Tree classes: ```frozenca::BTreeSet```, ```frozenca
 
 This library is header-only, so no additional setup process is required beyond including the headers.
 
+Or
+
+For cmake projects:
+
+Install one of package BTree..rpm or BTree..deb or include this project into yours and then
+
+ ```cmake
+ find_package(BTree)
+ #...
+ target_link_libraries(${your_target} PRIVATE BTree::BTree)
+ ```
+
+
 ## Target OS/Compiler version
 
 This library aggressively uses C++20 features, and verified to work in gcc 11.2 and MSVC 19.32.
@@ -25,7 +38,7 @@ There are currently no plans to support C++17 and earlier.
 Usage is very similar to the C++ standard library ordered associative containers (i.e. ```std::set``` and its friends)
 
 ```cpp
-#include "fc_btree.h"
+#include "fc/btree.h"
 #include <iostream>
 #include <string>
 
@@ -208,7 +221,7 @@ Time to erase 1000000 elements: Average : 1639.79ms, Stdev   : 82.7256ms, 95%   
 
 ## Sanity check and unit test
 
-If you want to contribute and test the code, please uncomment these lines, which will do full sanity checks on the entire tree:
+If you want to contribute and test the code, pay attention and use macro _CONTROL_IN_TEST, which will do full sanity checks on the entire tree:
 
 https://github.com/frozenca/BTree/blob/adf3c3309f45a65010d767df674c232c12f5c00a/fc_btree.h#L350
 https://github.com/frozenca/BTree/blob/adf3c3309f45a65010d767df674c232c12f5c00a/fc_btree.h#L531-#L532

@@ -36,3 +36,28 @@ void perf_result::print_stats(std::ostream &os) const {
   print("find", find);
   print("erase", erase);
 }
+
+std::vector<std::string> generate_random_strings(int max_n, int max_length, bool allow_duplicates) {
+  std::vector<std::string> res;
+
+  std::mt19937 gen(std::random_device{}());
+  std::uniform_int_distribution<int> length_dist(1, max_length);
+  std::uniform_int_distribution<int> ch_dist(32, 126);
+
+  for (int i = 0; i < max_n; ++i) {
+    int len = length_dist(gen);
+    std::string s;
+    for (int l = 0; l < len; ++l) {
+      s += static_cast<char>(ch_dist(gen));
+    }
+    res.push_back(std::move(s));
+  }
+
+  if (!allow_duplicates) {
+    std::ranges::sort(res);
+    auto ret = std::ranges::unique(res);
+    res.erase(ret.begin(), ret.end());
+  }
+
+  return res;
+}

@@ -537,7 +537,7 @@ public:
 
   [[nodiscard]] bool verify() const {
     // Uncomment these lines for testing
-#ifdef _UNIT_TEST
+#ifdef _CONTROL_IN_TEST
      assert(begin_ == const_iterator_type(leftmost_leaf(root_.get()), 0));
      assert(verify(root_.get()));
 #endif

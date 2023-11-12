@@ -1,4 +1,4 @@
-#define _UNIT_TEST
+#define _CONTROL_IN_TEST
 
 #include "fc_catch2.h"
 #include <fstream>

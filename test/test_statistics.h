@@ -28,17 +28,17 @@ struct perf_result {
 
 stats get_statistics(std::vector<float> &v);
 
+std::vector<std::string> generate_random_strings(int max_n, int max_length, bool allow_duplicates);
+
 template <typename TreeType>
-[[maybe_unused]] perf_result tree_perf_test(TreeType &tree, size_t values_cnt = 10'000, size_t trials = 1) {
-  const size_t max_n = values_cnt;
+[[maybe_unused]] perf_result tree_perf_test(TreeType &tree, std::vector<typename TreeType::value_type> v, size_t trials = 1) {
+  const size_t max_n = v.size();
   const size_t max_trials = trials;
 
   std::mt19937 gen(std::random_device{}());
   std::vector<float> durations_insert;
   std::vector<float> durations_find;
   std::vector<float> durations_erase;
-  std::vector<typename TreeType::value_type> v(max_n);
-  std::iota(v.begin(), v.end(), 0);
 
   for (size_t t = 0; t < max_trials; ++t) {
     float duration = 0.0f;
