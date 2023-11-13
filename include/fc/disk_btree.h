@@ -1,8 +1,8 @@
 #ifndef __FC_DISK_BTREE_H__
 #define __FC_DISK_BTREE_H__
 
-#include "fc_btree.h"
-#include "fc_disk_fixed_alloc.h"
+#include "fc/btree.h"
+#include "fc/disk_fixed_alloc.h"
 
 namespace frozenca {
 

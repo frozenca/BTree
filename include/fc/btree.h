@@ -1,19 +1,25 @@
 #ifndef __FC_BTREE_H__
 #define __FC_BTREE_H__
 
+#ifndef FC_USE_SIMD
 #define FC_USE_SIMD 0
+#endif // FC_USE_SIMD
+
+#ifndef FC_PREFER_BINARY_SEARCH
 #define FC_PREFER_BINARY_SEARCH 0
+#endif //FC_PREFER_BINARY_SEARCH
 
 #if FC_USE_SIMD
-#include "fc_comp.h"
+#include "fc/comp.h"
 #ifdef _MSC_VER
 #pragma warning(disable : 4324)
 #endif // MSC_VER
 #endif // FC_USE_SIMD
+
+#include "fc/details.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <concepts>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -31,18 +37,17 @@
 
 namespace frozenca {
 
-template <typename T>
-concept Containable = std::is_same_v<std::remove_cvref_t<T>, T>;
-
-template <typename T>
-concept DiskAllocable = std::is_same_v<std::remove_cvref_t<T>, T> &&
-    std::is_trivially_copyable_v<T> &&(sizeof(T) % alignof(T) == 0);
-
-using attr_t = std::int32_t;
-
 template <Containable K, Containable V> struct BTreePair {
   K first;
   V second;
+
+  BTreePair(K &&k, V &&v): first(std::forward<K>(k)), second(std::forward<V>(v)) {}
+  
+  BTreePair() = default;
+  
+  BTreePair(K &&k): first(std::forward<K>(k)), second() {}
+  
+  BTreePair(V &&v): first(), second(std::forward<V>(v)) {}
 
   operator std::pair<const K &, V &>() noexcept { return {first, second}; }
 
@@ -105,32 +110,11 @@ requires(Fanout >= 2) class BTreeBase;
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, template <typename T> class AllocTemplate>
-BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>
-join(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
-     BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_right);
+struct join_helper;
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, template <typename T> class AllocTemplate, typename T>
-BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> join(
-    BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
-    T &&raw_value,
-    BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&
-        tree_right) requires std::is_constructible_v<V, std::remove_cvref_t<T>>;
-
-template <Containable K, typename V, attr_t Fanout, typename Comp,
-          bool AllowDup, template <typename T> class AllocTemplate, typename T>
-std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
-          BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>>
-split(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree,
-      T &&raw_key) requires std::is_constructible_v<K, std::remove_cvref_t<T>>;
-
-template <Containable K, typename V, attr_t Fanout, typename Comp,
-          bool AllowDup, template <typename T> class AllocTemplate, typename T>
-std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
-          BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>>
-split(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree,
-      T &&raw_key1,
-      T &&raw_key2) requires std::is_constructible_v<K, std::remove_cvref_t<T>>;
+struct split_helper;
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, template <typename T> class AllocTemplate>
@@ -553,9 +537,10 @@ public:
 
   [[nodiscard]] bool verify() const {
     // Uncomment these lines for testing
-
-    // assert(begin_ == const_iterator_type(leftmost_leaf(root_.get()), 0));
-    // assert(verify(root_.get()));
+#ifdef _CONTROL_IN_TEST
+     assert(begin_ == const_iterator_type(leftmost_leaf(root_.get()), 0));
+     assert(verify(root_.get()));
+#endif
     return true;
   }
 
@@ -1930,20 +1915,7 @@ protected:
 public:
   template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
             bool AllowDup_, template <typename T> class AllocTemplate_>
-  friend BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>
-  join(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_> &&tree_left,
-       BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>
-           &&tree_right);
-
-  template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
-            bool AllowDup_, template <typename T> class AllocTemplate_,
-            typename T_>
-  friend BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>
-  join(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_> &&tree_left,
-       T_ &&raw_value,
-       BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>
-           &&tree_right) requires
-      std::is_constructible_v<V_, std::remove_cvref_t<T_>>;
+  friend struct join_helper;
 
 protected:
   std::pair<BTreeBase, BTreeBase>
@@ -2012,8 +1984,7 @@ protected:
           supertree_left.set_begin();
 
           BTreeBase new_tree_left =
-              join(std::move(supertree_left), std::move(xl->keys_[il - 1]),
-                   std::move(tree_left));
+              join(std::move(supertree_left), std::move(xl->keys_[il - 1]), std::move(tree_left));
           tree_left = std::move(new_tree_left);
         }
 
@@ -2097,55 +2068,43 @@ protected:
   }
 
 public:
-  template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
-            bool AllowDup_, template <typename T> class AllocTemplate_,
-            typename T>
-  friend std::pair<BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>,
-                   BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>>
-  split(
-      BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_> &&tree,
-      T &&raw_key) requires std::is_constructible_v<K_, std::remove_cvref_t<T>>;
-
-  template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
-            bool AllowDup_, template <typename T> class AllocTemplate_,
-            typename T>
-  friend std::pair<BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>,
-                   BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_>>
-  split(BTreeBase<K_, V_, Fanout_, Comp_, AllowDup_, AllocTemplate_> &&tree,
-        T &&raw_key1, T &&raw_key2) requires
-      std::is_constructible_v<K_, std::remove_cvref_t<T>>;
+    template <Containable K_, typename V_, attr_t Fanout_, typename Comp_,
+              bool AllowDup_, template <typename T> class AllocTemplate_, typename T>
+    friend struct split_helper;
 };
 
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, template <typename T> class AllocTemplate>
-BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>
-join(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
-     BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_right) {
-  if (tree_left.empty()) {
-    return std::move(tree_right);
-  } else if (tree_right.empty()) {
-    return std::move(tree_left);
-  } else {
-    auto it = tree_right.begin();
-    V mid_value = *it;
-    tree_right.erase(it);
-    return join(std::move(tree_left), std::move(mid_value),
-                std::move(tree_right));
+struct join_helper {
+private:
+    BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> result_;
+
+    using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>;
+    using Node = typename Tree::node_type;
+    using Proj = typename Tree::Proj;
+    static constexpr bool is_disk_ = Tree::is_disk_;
+
+public:
+  join_helper(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
+              BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_right) {
+    if (tree_left.empty()) {
+      result_ = std::move(tree_right);
+    } else if (tree_right.empty()) {
+      result_ = std::move(tree_left);
+    } else {
+      auto it = tree_right.begin();
+      V mid_value = *it;
+      tree_right.erase(it);
+      result_ = join(std::move(tree_left), std::move(mid_value),
+                     std::move(tree_right));
   }
 }
 
-template <Containable K, typename V, attr_t Fanout, typename Comp,
-          bool AllowDup, template <typename T> class AllocTemplate, typename T_>
-BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>
-join(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
-     T_ &&raw_value,
-     BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>
-         &&tree_right) requires
-    std::is_constructible_v<V, std::remove_cvref_t<T_>> {
-  using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>;
-  using Node = typename Tree::node_type;
-  using Proj = typename Tree::Proj;
-  constexpr bool is_disk_ = Tree::is_disk_;
+  template <typename T_>
+  requires std::is_constructible_v<V, std::remove_cvref_t<T_>>
+  join_helper(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
+              T_                                                     &&raw_value,
+              BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_right)  {
 
   V mid_value{std::forward<T_>(raw_value)};
   if ((!tree_left.empty() &&
@@ -2242,7 +2201,7 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
     }
     assert(new_tree.root_->size_ == size_left + size_right + 1);
     assert(new_tree.verify());
-    return new_tree;
+    result_ = std::move(new_tree);
   } else {
     Tree new_tree = std::move(tree_right);
     attr_t curr_height = height_right;
@@ -2301,52 +2260,56 @@ join(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
     new_tree.begin_ = new_begin;
     assert(new_tree.root_->size_ == size_left + size_right + 1);
     assert(new_tree.verify());
-    return new_tree;
+    result_ = std::move(new_tree);
   }
 }
-
+  BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>&& result() { return std::move(result_); }
+};
 template <Containable K, typename V, attr_t Fanout, typename Comp,
           bool AllowDup, template <typename T> class AllocTemplate, typename T>
-std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
-          BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>>
-split(
-    BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree,
-    T &&raw_key) requires(std::is_constructible_v<K, std::remove_cvref_t<T>>) {
+struct split_helper {
+private:
+  std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
+            BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>> result_;
+public:
   using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>;
-  if (tree.empty()) {
-    Tree tree_left(tree.alloc_);
-    Tree tree_right(tree.alloc_);
-    return {std::move(tree_left), std::move(tree_right)};
+
+  split_helper(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree,
+               T                                                      &&raw_key)
+      requires(std::is_constructible_v<K, std::remove_cvref_t<T>>) {
+    if (tree.empty()) {
+      Tree tree_left(tree.alloc_);
+      Tree tree_right(tree.alloc_);
+      result_ = {std::move(tree_left), std::move(tree_right)};
+    } else {
+      K mid_key{std::forward<T>(raw_key)};
+      result_ = tree.split_to_two_trees(tree.find_lower_bound(mid_key, false),
+                                        tree.find_upper_bound(mid_key, false));
+    }
   }
-
-  K mid_key{std::forward<T>(raw_key)};
-  return tree.split_to_two_trees(tree.find_lower_bound(mid_key, false),
-                                 tree.find_upper_bound(mid_key, false));
-}
-
-template <Containable K, typename V, attr_t Fanout, typename Comp,
-          bool AllowDup, template <typename T> class AllocTemplate, typename T>
-std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
-          BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>>
-split(
-    BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree, T &&raw_key1,
-    T &&raw_key2) requires(std::is_constructible_v<K, std::remove_cvref_t<T>>) {
-  using Tree = BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>;
-  if (tree.empty()) {
-    Tree tree_left(tree.alloc_);
-    Tree tree_right(tree.alloc_);
-    return {std::move(tree_left), std::move(tree_right)};
+  split_helper(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree,
+               T                                                      &&raw_key1,
+               T                                                      &&raw_key2)
+      requires(std::is_constructible_v<K, std::remove_cvref_t<T>>) {
+    if (tree.empty()) {
+      Tree tree_left(tree.alloc_);
+      Tree tree_right(tree.alloc_);
+      result_ = {std::move(tree_left), std::move(tree_right)};
+    } else {
+      K key1{std::forward<T>(raw_key1)};
+      K key2{std::forward<T>(raw_key2)};
+      if (Comp{}(key2, key1)) {
+        throw std::invalid_argument("split() key order is invalid\n");
+      }
+      result_ = tree.split_to_two_trees(tree.find_lower_bound(key1, false),
+                                        tree.find_upper_bound(key2, false));
+    }
   }
+  std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
+            BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>> &&
+  result() { return std::move(result_); }
 
-  K key1{std::forward<T>(raw_key1)};
-  K key2{std::forward<T>(raw_key2)};
-  if (Comp{}(key2, key1)) {
-    throw std::invalid_argument("split() key order is invalid\n");
-  }
-  return tree.split_to_two_trees(tree.find_lower_bound(key1, false),
-                                 tree.find_upper_bound(key2, false));
-}
-
+};
 template <Containable K, attr_t t = 64, typename Comp = std::ranges::less,
           template <typename T> class AllocTemplate = std::allocator>
 using BTreeSet = BTreeBase<K, K, t, Comp, false, AllocTemplate>;
@@ -2366,6 +2329,39 @@ template <Containable K, Containable V, attr_t t = 64,
 using BTreeMultiMap =
     BTreeBase<K, BTreePair<K, V>, t, Comp, true, AllocTemplate>;
 
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, template <typename T> class AllocTemplate>
+BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> join(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
+                                                            BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_right) {
+  return join_helper(std::move(tree_left), std::move(tree_right)).result();
+}
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, template <typename T> class AllocTemplate, typename T_>
+BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> join(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_left,
+                                                            T_                                                     &&raw_value,
+                                                            BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree_right) {
+  return join_helper(std::move(tree_left), std::move(raw_value), std::move(tree_right)).result();
+}
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, template <typename T> class AllocTemplate, typename T>
+std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
+          BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>>
+split(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree,
+      T                                                      &&raw_key) {
+  return split_helper(std::move(tree), std::move(raw_key)).result();
+}
+
+template <Containable K, typename V, attr_t Fanout, typename Comp,
+          bool AllowDup, template <typename T> class AllocTemplate, typename T>
+std::pair<BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>,
+          BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate>>
+split(BTreeBase<K, V, Fanout, Comp, AllowDup, AllocTemplate> &&tree,
+      T                                                      &&raw_key1,
+      T                                                      &&raw_key2) {
+  return split_helper(std::move(tree), std::move(raw_key1), std::move(raw_key2)).result();
+}
 } // namespace frozenca
 
 #endif //__FC_BTREE_H__

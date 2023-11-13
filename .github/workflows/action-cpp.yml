@@ -1,0 +1,78 @@
+name: build and cpack
+on: [ push, pull_request ]
+jobs:
+  ubuntu-22-04:
+    runs-on: ubuntu-latest
+    name: Build on ${{ matrix.container }} x86_64
+    strategy:
+      #
+      # matrix for containers
+      #
+      matrix:
+        container:
+          - ubuntu:latest
+          - debian:latest
+          - fedora:latest
+          - alt:sisyphus
+
+    container:
+      image: ${{ matrix.container }}
+
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+      - name: Get commit sha
+        id: git_sha
+        run: echo "git_sha=$(echo $GITHUB_SHA)" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v3
+      # install dependencies
+      - name: devel-pkgs
+        run: |
+          case "${{ matrix.container }}" in
+            ubuntu*|debian*)
+              apt-get update -y && apt-get install -yq binutils git make cmake catch2 gcc g++ lsb-release
+            ;;
+            fedora*)
+              yum update -y && yum install -yq binutils git make cmake catch2-devel rpm-build redhat-lsb
+            ;;
+            alt*)
+              apt-get update -y && apt-get install -yq binutils git make cmake ctest catch2-devel gcc gcc-c++ rpm-build lsb-release
+            ;;
+          esac
+      # build project
+      - name: mkdir
+        run: mkdir cmake-build-release
+      - name: cmake cmake-build-release
+        run: cmake -DCOMMITTER_DATE="${{ steps.date.outputs.date }}" -DCOMMITTER_FULLSHA="${{ steps.git_sha.outputs.git_sha }}" -DCOMMITTER_SHORTSHA="$(echo ${{ steps.git_sha.outputs.git_sha }} | cut -c1-7)" -DCMAKE_BUILD_TYPE=Release -Bcmake-build-release -H.
+      - name: cmake make
+        run: cmake --build cmake-build-release/ --target all --parallel
+      - name: get-version
+        id: get-version
+        run: echo "prj_ver=$(cat ./VERSION.txt)" >> $GITHUB_OUTPUT
+      - name: ctest
+        run: cd cmake-build-release && ctest && cd ..
+      - name: cpack
+        run: |
+          case "${{ matrix.container }}" in
+            ubuntu*|debian*)
+              cd cmake-build-release && cpack -G DEB && cd ..
+            ;;
+            fedora*)
+              cd cmake-build-release && cpack -G RPM && cd ..
+            ;;
+            alt*)
+              cd cmake-build-release && echo "%_allow_root_build      1" > /etc/rpm/macros.d/02-enable-build-root && cpack -G RPM && cd ..
+            ;;
+          esac
+      - uses: mad9000/actions-find-and-replace-string@3
+        id: container
+        with:
+          source: ${{ matrix.container }}
+          find: ':'        # we want to remove : from container name
+          replace: '-'     # and replace it with -
+      - name: Upload BTree binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ format('BTree-{0}.{1}', steps.get-version.outputs.prj_ver, steps.container.outputs.value) }}
+          path: cmake-build-release/${{ format('BTree-{0}-noarch.???', steps.get-version.outputs.prj_ver) }}
