@@ -81,12 +81,12 @@ template <CanUseSimd K> struct SimdTrait {
 };
 
 template <CanUseSimd K, bool less>
-inline std::int32_t get_lb_simd(K key, const K *first, const K *last) {
-  const auto len = static_cast<std::int32_t>(last - first);
+inline std::ptrdiff_t get_lb_simd(K key, const K *first, const K *last) {
+  const auto len = static_cast<std::ptrdiff_t>(last - first);
   const K *curr = first;
   auto key_broadcast = broadcast(key);
   int mask = 0;
-  int offset = 0;
+  ptrdiff_t offset = 0;
   while (offset < len) {
     if constexpr (less) {
       mask = ~cmp(key_broadcast, curr);
@@ -109,12 +109,12 @@ inline std::int32_t get_lb_simd(K key, const K *first, const K *last) {
 }
 
 template <CanUseSimd K, bool less>
-inline std::int32_t get_ub_simd(K key, const K *first, const K *last) {
-  const auto len = static_cast<std::int32_t>(last - first);
+inline std::ptrdiff_t get_ub_simd(K key, const K *first, const K *last) {
+  const auto len = static_cast<std::ptrdiff_t>(last - first);
   const K *curr = first;
   auto key_broadcast = broadcast(key);
   int mask = 0;
-  int offset = 0;
+  ptrdiff_t offset = 0;
   while (offset < len) {
     if constexpr (less) {
       mask = cmp(curr, key_broadcast);
