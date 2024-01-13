@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - run: apt-get update -y && apt-get install -yq binutils git make cmake catch2 gcc g++ lsb-release
+      - run: sudo apt-get update -y && sudo apt-get install -yq binutils git make cmake catch2 gcc g++ lsb-release
       - name: mkdir
         run: mkdir cmake-build-release
       - name: cmake cmake-build-release
