@@ -12,6 +12,7 @@ option(FORCE_USE_SIMD "force define FC_USE_SIMD (apllicable only for x86_64)" OF
 option(FORCE_PREFER_BINARY_SEARCH "force define FC_PREFER_BINARY_SEARCH (recommended for clang only)" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(VersionHeader)
 set(PROJECT_VERSION "${MAJOR}.${MINOR}.${PATCH}.${COMMITTER_SHORTSHA}")
