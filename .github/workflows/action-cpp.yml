@@ -101,7 +101,7 @@ jobs:
       - name: mkdir
         run: mkdir cmake-build-release
       - name: cmake cmake-build-release
-        run: cmake -DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_FLAGS="-stdlib=libc++" -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_EXE_LINKER_FLAGS="-stdlib=libc++" -DFORCE_USE_SIMD=ON -DCMAKE_BUILD_TYPE=Release -Bcmake-build-release -H.
+        run: cmake -DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15 -DFORCE_USE_SIMD=ON -DCMAKE_BUILD_TYPE=Release -Bcmake-build-release -H.
       - name: cmake make
         run: cmake --build cmake-build-release/ --target all --parallel
       - name: sde-test
