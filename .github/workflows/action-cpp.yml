@@ -88,5 +88,7 @@ jobs:
         run: cmake -DFORCE_USE_SIMD=ON -DCMAKE_BUILD_TYPE=Release -Bcmake-build-release -H.
       - name: cmake make
         run: cmake --build cmake-build-release/ --target all --parallel
-      - uses: petarpetrovt/setup-sde@v2.3
+      - name: sde-test
+        uses: petarpetrovt/setup-sde@v2.3
+      - name: test
         run: cp cmake-build-release/fc_tests ${SDE_PATH} && cd ${SDE_PATH} && ./sde64 -knl -- ./fc_tests --benchmark-samples=1
