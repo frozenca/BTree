@@ -12,7 +12,7 @@ class DiskBTreeBase
     : public BTreeBase<K, V, Fanout, Comp, AllowDup, AllocatorFixed> {
 public:
   using Base = BTreeBase<K, V, Fanout, Comp, AllowDup, AllocatorFixed>;
-  using Node = Base::node_type;
+  using Node = typename Base::node_type;
 
 private:
   MemoryMappedFile mm_file_;
