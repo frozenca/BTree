@@ -94,7 +94,7 @@ jobs:
         run: cp cmake-build-release/fc_tests ${SDE_PATH} && cd ${SDE_PATH} && ./sde64 -knl -- ./fc_tests --benchmark-samples=1
 
   macos-clang-cmake:
-    runs-on: macos-14
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v3
       - run: brew install git ninja cmake catch2

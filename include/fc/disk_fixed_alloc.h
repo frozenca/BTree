@@ -8,7 +8,11 @@
 #include <concepts>
 #include <cstdint>
 #include <iostream>
+#if defined(__clang__) && __clang_major__ < 15
+#include <experimental/memory_resource>
+#elif defined(__clang__) || (__GNUC__)
 #include <memory_resource>
+#endif
 #include <stdexcept>
 #include <type_traits>
 
