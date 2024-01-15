@@ -8,14 +8,20 @@
 #include <concepts>
 #include <cstdint>
 #include <iostream>
+#if defined(__clang__) && __clang_major__ < 15
+#include <experimental/memory_resource>
+namespace stdpmr = std::experimental::pmr;
+#elif defined(__clang__) || (__GNUC__)
 #include <memory_resource>
+namespace stdpmr = std::pmr;
+#endif
 #include <stdexcept>
 #include <type_traits>
 
 namespace frozenca {
 
 template <typename T>
-class MemoryResourceFixed : public std::pmr::memory_resource {
+class MemoryResourceFixed : public stdpmr::memory_resource {
   T *pool_ = nullptr;
   std::size_t pool_size_ = 0;
   T *free_ = nullptr;
@@ -72,7 +78,7 @@ private:
   }
 
   [[nodiscard]] bool
-  do_is_equal(const std::pmr::memory_resource &other) const noexcept override {
+  do_is_equal(const stdpmr::memory_resource &other) const noexcept override {
     if (this == &other) {
       return true;
     }
@@ -83,7 +89,7 @@ private:
 };
 
 template <typename T> class AllocatorFixed {
-  std::pmr::memory_resource *mem_res_;
+  stdpmr::memory_resource *mem_res_;
 
 public:
   template <typename Other> struct rebind {
@@ -93,7 +99,7 @@ public:
   using value_type = T;
 
   explicit AllocatorFixed(
-      std::pmr::memory_resource *mem_res = std::pmr::get_default_resource())
+      stdpmr::memory_resource *mem_res = stdpmr::get_default_resource())
       : mem_res_{mem_res} {}
 
   template <typename Other>
@@ -110,7 +116,7 @@ public:
                          std::alignment_of_v<T>);
   }
 
-  [[nodiscard]] std::pmr::memory_resource *
+  [[nodiscard]] stdpmr::memory_resource *
   get_memory_resource() const noexcept {
     return mem_res_;
   }

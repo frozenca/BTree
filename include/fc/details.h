@@ -2,6 +2,7 @@
 #define FC_DETAILS_H
 
 #include <concepts>
+#include <cstdint>
 
 namespace frozenca {
 
