@@ -328,6 +328,14 @@ requires(Fanout >= 2) class BTreeBase {
       }
     }
 
+    void dig() noexcept {
+      while (!node_->children_.empty()) {
+        auto id = index_;
+        index_ = ssize(node_->children_[id]->keys_);
+        node_ = node_->children_[id].get();
+      }
+    }
+
     void increment() noexcept {
       // we don't do past to end() check for efficiency
       if (!node_->is_leaf()) {
@@ -1178,6 +1186,12 @@ protected:
 
         assert(rsecond->nkeys() > deficit + (Fanout - 1));
         right_rotate_n(rfirst, deficit);
+      } else if (rsecond->nkeys() < Fanout - 1) {
+        // rsecond borrows key from rfirst
+        auto deficit = (Fanout - 1 - rsecond->nkeys());
+
+        assert(rfirst->nkeys() > deficit + (Fanout - 1));
+        left_rotate_n(rsecond, deficit);
       }
     }
   }
@@ -1922,6 +1936,8 @@ protected:
   split_to_two_trees(const_iterator_type iter_lb, const_iterator_type iter_ub) {
     BTreeBase tree_left(alloc_);
     BTreeBase tree_right(alloc_);
+    iter_lb.dig();
+
     auto lindices = get_path_from_root(iter_lb);
     auto xl = iter_lb.node_;
     std::ranges::reverse(lindices);
