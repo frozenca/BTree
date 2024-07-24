@@ -13,7 +13,7 @@ jobs:
 #          - ubuntu:latest
 #          - debian:latest
 #          - fedora:latest
-          - alt:sisyphus
+          - alt:latest
 
     container:
       image: ${{ matrix.container }}
