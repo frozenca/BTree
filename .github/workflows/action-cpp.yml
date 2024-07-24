@@ -34,7 +34,7 @@ jobs:
               apt-get update -y && apt-get install -yq binutils git make cmake catch2 gcc g++ lsb-release
             ;;
             fedora*)
-              yum update -y && yum install -yq binutils git make cmake catch2-devel rpm-build redhat-lsb
+              yum update -y && yum install -yq binutils git make cmake catch2-devel gcc gcc-c++ rpm-build redhat-lsb
             ;;
             alt*)
               apt-get update -y && apt-get install -yq binutils git make cmake ctest catch2-devel gcc gcc-c++ rpm-build lsb-release
