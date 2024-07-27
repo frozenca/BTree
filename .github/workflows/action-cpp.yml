@@ -25,9 +25,10 @@ jobs:
       - name: Get commit sha
         id: git_sha
         run: echo "git_sha=$(echo $GITHUB_SHA)" >> $GITHUB_OUTPUT
-      - name: export LD_LIBRARY_PATH
-        run: export LD_LIBRARY_PATH=/usr/lib64:${LD_LIBRARY_PATH}
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+              with:
+                node-version: '20'
       # install dependencies
       - name: devel-pkgs
         run: |
