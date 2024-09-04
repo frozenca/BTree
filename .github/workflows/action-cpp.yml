@@ -10,10 +10,10 @@ jobs:
       #
       matrix:
         container:
-          - ubuntu:latest
-          - debian:latest
-          - fedora:latest
-          - alt:sisyphus
+         - ubuntu:latest
+         - debian:latest
+         - fedora:latest
+#         - alt:sisyphus
 
     container:
       image: ${{ matrix.container }}
@@ -25,7 +25,7 @@ jobs:
       - name: Get commit sha
         id: git_sha
         run: echo "git_sha=$(echo $GITHUB_SHA)" >> $GITHUB_OUTPUT
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       # install dependencies
       - name: devel-pkgs
         run: |
@@ -34,7 +34,7 @@ jobs:
               apt-get update -y && apt-get install -yq binutils git make cmake catch2 gcc g++ lsb-release
             ;;
             fedora*)
-              yum update -y && yum install -yq binutils git make cmake catch2-devel rpm-build redhat-lsb
+              yum update -y && yum install -yq binutils git make cmake catch2-devel gcc gcc-c++ rpm-build redhat-lsb
             ;;
             alt*)
               apt-get update -y && apt-get install -yq binutils git make cmake ctest catch2-devel gcc gcc-c++ rpm-build lsb-release
@@ -72,7 +72,7 @@ jobs:
           find: ':'        # we want to remove : from container name
           replace: '-'     # and replace it with -
       - name: Upload BTree binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ format('BTree-{0}.{1}', steps.get-version.outputs.prj_ver, steps.container.outputs.value) }}
           path: cmake-build-release/${{ format('BTree-{0}-noarch.???', steps.get-version.outputs.prj_ver) }}
@@ -80,7 +80,7 @@ jobs:
   avx512f-gcc-cmake:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: sudo apt-get update -y && sudo apt-get install -yq binutils git make cmake catch2 gcc g++ lsb-release
       - name: mkdir
         run: mkdir cmake-build-release
@@ -94,9 +94,9 @@ jobs:
         run: cp cmake-build-release/fc_tests ${SDE_PATH} && cd ${SDE_PATH} && ./sde64 -knl -- ./fc_tests --benchmark-samples=1
 
   macos-clang-cmake:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: brew install git ninja cmake catch2
       - name: mkdir
         run: mkdir cmake-build-release
