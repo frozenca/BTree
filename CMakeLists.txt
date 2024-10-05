@@ -27,7 +27,7 @@ endif()
 set(CATCH_LIBS_ALIASES Catch2::Catch2 Catch2::Catch2WithMain)
 
 function(get_linux_lsb_release_information)
-    execute_process(COMMAND sh -c "cat /etc/*release | grep ^ID | cut -d'=' -f 2" OUTPUT_VARIABLE LSB_RELEASE_ID_SHORT OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND sh -c "cat /etc/*release | grep -w ID | cut -d'=' -f 2" OUTPUT_VARIABLE LSB_RELEASE_ID_SHORT OUTPUT_STRIP_TRAILING_WHITESPACE)
     execute_process(COMMAND sh -c "cat /etc/*release | grep ^VERSION_ID | cut -d'=' -f 2" OUTPUT_VARIABLE LSB_RELEASE_VERSION_SHORT OUTPUT_STRIP_TRAILING_WHITESPACE)
     execute_process(COMMAND sh -c "cat /etc/*release | grep ^VERSION_CODENAME | cut -d'=' -f 2" OUTPUT_VARIABLE LSB_RELEASE_CODENAME_SHORT OUTPUT_STRIP_TRAILING_WHITESPACE)
 
